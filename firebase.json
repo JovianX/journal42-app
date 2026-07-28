@@ -1,0 +1,11 @@
+{
+  "auth": {
+    "providers": {
+      "emailPassword": true,
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "Journal42",
+        "supportEmail": "arthur@jovianx.com"
+      }
+    }
+  }
+}
