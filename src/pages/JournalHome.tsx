@@ -1,5 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import type { User } from 'firebase/auth'
 import { useAuth } from '../auth/useAuth'
+import {
+  requestReflection,
+  type Reflection,
+  type ReflectionHistoryItem,
+} from '../lib/ai'
 
 type Nugget = {
   id: string
@@ -174,49 +180,10 @@ function animateComposerFace(
   frame.style.marginBottom = `${margin}px`
 }
 
-type Reflection = {
-  text: string
-  historyCite?: string
-}
-
-const REFLECTION_BEATS: Array<{ text: string; withHistory?: boolean }> = [
-  {
-    text: 'The hard part sounds less like the day, and more like what you didn’t say.',
-    withHistory: true,
-  },
-  {
-    text: 'There’s a quieter feeling under this. Less anger, more the need to be sure of yourself.',
-  },
-  {
-    text: 'You keep circling the moment, not the meaning. The meaning is usually one sentence shorter.',
-    withHistory: true,
-  },
-  {
-    text: 'This reads like you’re protecting someone else’s comfort before your own clarity.',
-  },
-  {
-    text: 'The loop isn’t new. Naming the sharp edge usually shortens it.',
-    withHistory: true,
-  },
-  {
-    text: 'You’re describing the surface. What’s the sentence you’d write if no one would read it?',
-  },
-]
-
 const DRAFT_REFLECT_MIN_CHARS = 20
 const DRAFT_REFLECT_IDLE_MS = 900
-const DRAFT_REFLECT_FORMING_MS = 280
 const VOICE_PANEL_MS = 720
-
-const VOICE_FOLLOWUPS = [
-  'That lands closer. So the unfinished part is the real weight, not the day itself.',
-  'Okay. Then the question under this might be: what would honesty look like in one sentence?',
-  'Hearing that, it sounds less like conflict and more like self-trust fraying at the edge.',
-  'Then keep the draft pointed there. The rest is noise around it.',
-  'That clarifies the pattern. You already know the next true line; it’s the one you’re avoiding.',
-  'Fair. Then this isn’t about finishing the thought. It’s about whether you’re willing to stand in it.',
-  'That shift matters. The reflection isn’t the day anymore; it’s the part of you that stayed quiet.',
-]
+const HISTORY_LIMIT = 8
 
 type VoiceTurn = {
   id: string
@@ -224,37 +191,11 @@ type VoiceTurn = {
   reflection: Reflection
 }
 
-function mockVoiceFollowup(steer: string, draftText: string): Reflection {
-  const seed = `${steer} ${draftText}`.trim().toLowerCase()
-  const hash = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0)
-  return {
-    text: VOICE_FOLLOWUPS[hash % VOICE_FOLLOWUPS.length]!,
-  }
-}
-
-function formatPastCite(at: number, daysAgo: number) {
-  const past = new Date(at)
-  past.setDate(past.getDate() - daysAgo)
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-  }).format(past)
-}
-
-function mockReflectionFromText(text: string, at = Date.now()): Reflection {
-  const seed = text.trim().toLowerCase()
-  const hash = Array.from(seed).reduce((sum, char) => sum + char.charCodeAt(0), 0)
-  const beat = REFLECTION_BEATS[hash % REFLECTION_BEATS.length]!
-  const historyCite = beat.withHistory ? formatPastCite(at, 2 + (hash % 9)) : undefined
-
-  return {
-    text: beat.text,
-    historyCite,
-  }
-}
-
-function mockReflection(nugget: Nugget): Reflection {
-  return mockReflectionFromText(nugget.text, nugget.createdAt)
+function historyFromNuggets(nuggets: Nugget[], excludeId?: string): ReflectionHistoryItem[] {
+  return nuggets
+    .filter((nugget) => nugget.id !== excludeId)
+    .slice(0, HISTORY_LIMIT)
+    .map(({ text, createdAt }) => ({ text, createdAt }))
 }
 
 function ReflectionCopy({ reflection }: { reflection: Reflection }) {
@@ -273,6 +214,8 @@ function ReflectionCopy({ reflection }: { reflection: Reflection }) {
 
 type NuggetItemProps = {
   nugget: Nugget
+  history: ReflectionHistoryItem[]
+  user: User | null
   isFresh: boolean
   isEditing: boolean
   onStartEdit: () => void
@@ -283,6 +226,8 @@ type NuggetItemProps = {
 
 function NuggetItem({
   nugget,
+  history,
+  user,
   isFresh,
   isEditing,
   onStartEdit,
@@ -294,11 +239,22 @@ function NuggetItem({
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [flipped, setFlipped] = useState(false)
+  const [reflection, setReflection] = useState<Reflection | null>(null)
+  const [reflectionLoading, setReflectionLoading] = useState(false)
+  const [reflectionError, setReflectionError] = useState<string | null>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
   const itemRef = useRef<HTMLLIElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const reflectionRequestRef = useRef(0)
   const menuId = useId()
-  const reflection = useMemo(() => mockReflection(nugget), [nugget])
+
+  useEffect(() => {
+    setReflection(null)
+    setReflectionError(null)
+    setReflectionLoading(false)
+    reflectionRequestRef.current += 1
+    setFlipped(false)
+  }, [nugget.id, nugget.text])
 
   useEffect(() => {
     if (!isFresh) return
@@ -380,6 +336,37 @@ function NuggetItem({
     setMenuOpen(false)
     setConfirmRemove(false)
     setFlipped(true)
+
+    if (reflection || reflectionLoading || !user) return
+    if (nugget.text.trim().length < DRAFT_REFLECT_MIN_CHARS) {
+      setReflectionError('Write a little more before reflecting.')
+      return
+    }
+
+    const requestId = reflectionRequestRef.current + 1
+    reflectionRequestRef.current = requestId
+    setReflectionLoading(true)
+    setReflectionError(null)
+
+    void requestReflection({
+      user,
+      draft: nugget.text,
+      history,
+    })
+      .then((next) => {
+        if (reflectionRequestRef.current !== requestId) return
+        setReflection(next)
+      })
+      .catch((error: unknown) => {
+        if (reflectionRequestRef.current !== requestId) return
+        setReflectionError(
+          error instanceof Error ? error.message : 'Reflection unavailable.',
+        )
+      })
+      .finally(() => {
+        if (reflectionRequestRef.current !== requestId) return
+        setReflectionLoading(false)
+      })
   }
 
   function flipToThought() {
@@ -529,8 +516,16 @@ function NuggetItem({
                 onClick={flipToThought}
                 aria-label="Back to thought"
               >
-                <p className="nugget-reflection-text">
-                  <ReflectionCopy reflection={reflection} />
+                <p className={`nugget-reflection-text${reflectionLoading ? ' is-forming' : ''}`}>
+                  {reflectionLoading ? (
+                    'Listening…'
+                  ) : reflectionError ? (
+                    reflectionError
+                  ) : reflection ? (
+                    <ReflectionCopy reflection={reflection} />
+                  ) : (
+                    'Tap reflect again when you’re ready.'
+                  )}
                 </p>
                 <span className="nugget-reflection-hint">Tap to return</span>
               </button>
@@ -719,6 +714,8 @@ export default function JournalHome() {
   const [voiceReplyOpen, setVoiceReplyOpen] = useState(false)
   const [voiceReply, setVoiceReply] = useState('')
   const [voiceViewIndex, setVoiceViewIndex] = useState(0)
+  const [voiceLoading, setVoiceLoading] = useState(false)
+  const [voiceError, setVoiceError] = useState<string | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const voiceReplyRef = useRef<HTMLTextAreaElement>(null)
@@ -726,11 +723,11 @@ export default function JournalHome() {
   const composerFaceRef = useRef<HTMLDivElement>(null)
   const composerBarDockRef = useRef<HTMLDivElement>(null)
   const composerGapRef = useRef<number | null>(null)
-  const voiceThreadRef = useRef<VoiceTurn[]>([])
   const voiceLockedRef = useRef(false)
   const voicePanelOpenRef = useRef(false)
   const listLabelId = useId()
   const dayGroups = useMemo(() => groupNuggetsByDay(nuggets, now), [nuggets, now])
+  const reflectionHistory = useMemo(() => historyFromNuggets(nuggets), [nuggets])
   const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({})
   const viewedVoiceTurn = voicePanel?.[voiceViewIndex] ?? null
   const isViewingLatestVoice = Boolean(
@@ -738,15 +735,17 @@ export default function JournalHome() {
   )
   const canViewEarlierVoice = voiceViewIndex > 0
   const canViewLaterVoice = Boolean(voicePanel && voiceViewIndex < voicePanel.length - 1)
+  const showVoicePanel = Boolean(voicePanel && viewedVoiceTurn) || voiceLoading || Boolean(voiceError)
 
   useEffect(() => {
-    voiceThreadRef.current = voiceThread
-  }, [voiceThread])
-
-  useEffect(() => {
-    if (voiceThread.length > 0) {
-      setVoicePanel(voiceThread)
-      setVoiceViewIndex(voiceThread.length - 1)
+    if (voiceThread.length > 0 || voiceLoading || voiceError) {
+      if (voiceThread.length > 0) {
+        setVoicePanel(voiceThread)
+        setVoiceViewIndex(voiceThread.length - 1)
+      } else {
+        setVoicePanel(null)
+        setVoiceViewIndex(0)
+      }
       if (voicePanelOpenRef.current) return
 
       const frame = window.requestAnimationFrame(() => {
@@ -767,7 +766,7 @@ export default function JournalHome() {
       setVoiceReply('')
     }, VOICE_PANEL_MS)
     return () => window.clearTimeout(timer)
-  }, [voiceThread])
+  }, [voiceThread, voiceLoading, voiceError])
 
   function isDayCollapsed(group: DayGroup) {
     if (group.key in collapsedDays) return collapsedDays[group.key]
@@ -824,34 +823,63 @@ export default function JournalHome() {
 
   useEffect(() => {
     const trimmed = draft.trim()
-    if (trimmed.length < DRAFT_REFLECT_MIN_CHARS) {
+    if (trimmed.length < DRAFT_REFLECT_MIN_CHARS || !user) {
       setVoiceThread([])
       setVoiceReplyOpen(false)
       setVoiceReply('')
+      setVoiceLoading(false)
+      setVoiceError(null)
       voiceLockedRef.current = false
       return
     }
 
     if (voiceLockedRef.current) return
 
-    let formingTimer = 0
+    const controller = new AbortController()
+    let cancelled = false
+
     const idleTimer = window.setTimeout(() => {
-      const next = mockReflectionFromText(trimmed)
-      formingTimer = window.setTimeout(() => {
-        setVoiceThread([
-          {
-            id: createId(),
-            reflection: next,
-          },
-        ])
-      }, voiceThreadRef.current.length > 0 ? 0 : DRAFT_REFLECT_FORMING_MS)
+      setVoiceLoading(true)
+      setVoiceError(null)
+      setVoiceThread([])
+
+      void requestReflection({
+        user,
+        draft: trimmed,
+        history: reflectionHistory,
+        signal: controller.signal,
+      })
+        .then((next) => {
+          if (cancelled || voiceLockedRef.current) return
+          setVoiceThread([
+            {
+              id: createId(),
+              reflection: next,
+            },
+          ])
+          setVoiceError(null)
+        })
+        .catch((error: unknown) => {
+          if (cancelled || voiceLockedRef.current) return
+          if (error instanceof DOMException && error.name === 'AbortError') return
+          setVoiceThread([])
+          setVoiceError(
+            error instanceof Error ? error.message : 'Reflection unavailable.',
+          )
+        })
+        .finally(() => {
+          if (cancelled) return
+          setVoiceLoading(false)
+        })
     }, DRAFT_REFLECT_IDLE_MS)
 
     return () => {
+      cancelled = true
+      controller.abort()
       window.clearTimeout(idleTimer)
-      window.clearTimeout(formingTimer)
+      setVoiceLoading(false)
     }
-  }, [draft])
+  }, [draft, reflectionHistory, user])
 
   useLayoutEffect(() => {
     const frame = composerFrameRef.current
@@ -875,10 +903,13 @@ export default function JournalHome() {
     setVoiceThread([])
     setVoiceReplyOpen(false)
     setVoiceReply('')
+    setVoiceLoading(false)
+    setVoiceError(null)
     voiceLockedRef.current = false
   }
 
   function openVoiceReply() {
+    if (voiceLoading) return
     const latestIndex = Math.max((voicePanel?.length ?? voiceThread.length) - 1, 0)
     if (voiceViewIndex !== latestIndex) {
       setVoiceViewIndex(latestIndex)
@@ -903,21 +934,38 @@ export default function JournalHome() {
     setVoiceViewIndex((index) => Math.min(voicePanel.length - 1, index + 1))
   }
 
-  function sendVoiceReply() {
+  async function sendVoiceReply() {
     const steer = voiceReply.trim()
-    if (!steer || voiceThread.length === 0) return
+    if (!steer || voiceThread.length === 0 || !user || voiceLoading) return
 
     voiceLockedRef.current = true
-    setVoiceThread((current) => [
-      ...current,
-      {
-        id: createId(),
-        comment: steer,
-        reflection: mockVoiceFollowup(steer, draft),
-      },
-    ])
+    setVoiceLoading(true)
+    setVoiceError(null)
     setVoiceReply('')
     setVoiceReplyOpen(false)
+
+    try {
+      const next = await requestReflection({
+        user,
+        draft: draft.trim(),
+        history: reflectionHistory,
+        reply: steer,
+      })
+      setVoiceThread((current) => [
+        ...current,
+        {
+          id: createId(),
+          comment: steer,
+          reflection: next,
+        },
+      ])
+    } catch (error: unknown) {
+      setVoiceError(
+        error instanceof Error ? error.message : 'Reflection unavailable.',
+      )
+    } finally {
+      setVoiceLoading(false)
+    }
   }
 
   function dropNugget() {
@@ -1080,18 +1128,18 @@ export default function JournalHome() {
 
             <div className={`draft-voice-slot${voicePanelOpen ? ' is-open' : ''}`}>
               <div className="draft-voice-slot-inner">
-                {voicePanel && viewedVoiceTurn ? (
+                {showVoicePanel ? (
                   <aside className="draft-voice" aria-live="polite">
                     <div className="draft-voice-head">
                       <div className="draft-voice-head-main">
                         <p className="draft-voice-label">Reflection</p>
-                        {voicePanel.length > 1 ? (
+                        {voicePanel && voicePanel.length > 1 ? (
                           <div className="draft-voice-history" role="group" aria-label="Reflection history">
                             <button
                               type="button"
                               className="draft-voice-history-btn"
                               onClick={viewEarlierVoice}
-                              disabled={!canViewEarlierVoice}
+                              disabled={!canViewEarlierVoice || voiceLoading}
                               aria-label="Earlier reflection"
                               title="Earlier"
                             >
@@ -1113,7 +1161,7 @@ export default function JournalHome() {
                               type="button"
                               className="draft-voice-history-btn"
                               onClick={viewLaterVoice}
-                              disabled={!canViewLaterVoice}
+                              disabled={!canViewLaterVoice || voiceLoading}
                               aria-label="Later reflection"
                               title="Later"
                             >
@@ -1131,7 +1179,7 @@ export default function JournalHome() {
                           </div>
                         ) : null}
                       </div>
-                      {!voiceReplyOpen ? (
+                      {!voiceReplyOpen && viewedVoiceTurn && !voiceLoading ? (
                         <button
                           type="button"
                           className="draft-voice-reply-trigger"
@@ -1159,16 +1207,26 @@ export default function JournalHome() {
                       ) : null}
                     </div>
 
-                    <div className="draft-voice-turn is-current" key={viewedVoiceTurn.id}>
-                      {viewedVoiceTurn.comment ? (
-                        <p className="draft-voice-comment">{viewedVoiceTurn.comment}</p>
-                      ) : null}
-                      <p className="draft-voice-text">
-                        <ReflectionCopy reflection={viewedVoiceTurn.reflection} />
-                      </p>
-                    </div>
+                    {viewedVoiceTurn ? (
+                      <div className="draft-voice-turn is-current" key={viewedVoiceTurn.id}>
+                        {viewedVoiceTurn.comment ? (
+                          <p className="draft-voice-comment">{viewedVoiceTurn.comment}</p>
+                        ) : null}
+                        <p className="draft-voice-text">
+                          <ReflectionCopy reflection={viewedVoiceTurn.reflection} />
+                        </p>
+                      </div>
+                    ) : null}
 
-                    {voiceReplyOpen && isViewingLatestVoice ? (
+                    {voiceLoading ? (
+                      <p className="draft-voice-text is-forming">Listening…</p>
+                    ) : null}
+
+                    {voiceError && !voiceLoading ? (
+                      <p className="draft-voice-text is-error">{voiceError}</p>
+                    ) : null}
+
+                    {voiceReplyOpen && isViewingLatestVoice && !voiceLoading ? (
                       <div className="draft-voice-reply">
                         <div className="draft-voice-reply-field">
                           <textarea
@@ -1184,7 +1242,7 @@ export default function JournalHome() {
                               }
                               if (event.key === 'Enter' && !event.shiftKey) {
                                 event.preventDefault()
-                                sendVoiceReply()
+                                void sendVoiceReply()
                               }
                             }}
                             placeholder="Talk with the reflection…"
@@ -1195,7 +1253,7 @@ export default function JournalHome() {
                             <button
                               type="button"
                               className="draft-voice-reply-submit"
-                              onClick={sendVoiceReply}
+                              onClick={() => void sendVoiceReply()}
                               aria-label="Continue"
                             >
                               <svg className="draft-voice-reply-submit-icon" viewBox="0 0 16 16" aria-hidden="true">
@@ -1291,6 +1349,8 @@ export default function JournalHome() {
                           <NuggetItem
                             key={nugget.id}
                             nugget={nugget}
+                            history={historyFromNuggets(nuggets, nugget.id)}
+                            user={user}
                             isFresh={justDroppedId === nugget.id}
                             isEditing={editingId === nugget.id}
                             onStartEdit={() => setEditingId(nugget.id)}

@@ -648,6 +648,15 @@
   transition: opacity 0.42s var(--voice-ease) 0.3s;
 }
 
+.draft-voice-text.is-forming {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.draft-voice-text.is-error {
+  color: var(--muted);
+}
+
 .draft-voice-slot.is-open .draft-voice-text,
 .draft-voice-slot.is-open .draft-voice-comment {
   opacity: 1;
@@ -1278,6 +1287,11 @@
   letter-spacing: -0.015em;
   line-height: 1.5;
   color: var(--ink);
+}
+
+.nugget-reflection-text.is-forming {
+  color: var(--muted);
+  font-style: italic;
 }
 
 .nugget-reflection-text .reflection-cite {

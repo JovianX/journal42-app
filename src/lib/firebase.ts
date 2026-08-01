@@ -30,7 +30,7 @@ export { firebaseApp, auth }
 export function requireAuth(): Auth {
   if (!auth) {
     throw new Error(
-      'Firebase is not configured. Copy app/.env.example to app/.env.local and fill in your Firebase web config.',
+      'Firebase is not configured. Copy .env.example to .env and fill in your Firebase web config.',
     )
   }
   return auth
