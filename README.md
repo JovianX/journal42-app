@@ -49,6 +49,29 @@ For GitHub Actions, set the same values as repository secrets (names match the `
 
 [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) builds on push to `main` and deploys to GitHub Pages.
 
+## AI API
+
+The AI backend lives in the sibling `journal42-api` project and should be deployed separately.
+
+| Mode | Default `VITE_AI_API_BASE` |
+| --- | --- |
+| `npm run dev` | `http://localhost:8787` |
+| production build | `https://unexhortative-recitable-edyth.ngrok-free.dev/journal42/api` |
+
+Leave `VITE_AI_API_BASE` blank to use the mode default, or set it to override.
+
+For local end-to-end reflection:
+
+```bash
+# terminal 1 — API
+cd ../journal42-api && npm run dev
+
+# terminal 2 — app
+npm run dev
+```
+
+For GitHub Actions, `VITE_AI_API_BASE` is set to the prod API URL in the deploy workflow.
+
 ### One-time GitHub + DNS
 
 1. Repo **Settings → Pages**: Source = GitHub Actions. Custom domain = `app.journal42.cloud` (CNAME file is already in `public/`).
