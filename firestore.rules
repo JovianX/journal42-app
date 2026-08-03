@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid} (Firebase Auth UID)
+    // Fields:
+    //   - draft: string (required on write, max 100000 chars) - composer draft
+    //   - updatedAt: number (required on write) - draft last-write ms epoch
+    //
+    // Collection: users/{uid}/nuggets
+    // Document ID: client-generated id
+    // Fields:
+    //   - text: string (required, 1..100000 chars) - journal entry body
+    //   - createdAt: number (required, immutable) - ms epoch
+    //
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isValidUserDoc(data) {
+      return data.keys().hasOnly(['draft', 'updatedAt'])
+        && data.draft is string
+        && data.draft.size() <= 100000
+        && data.updatedAt is number;
+    }
+
+    function isValidNugget(data) {
+      return data.keys().hasOnly(['text', 'createdAt'])
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 100000
+        && data.createdAt is number;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isValidUserDoc(request.resource.data);
+      allow delete: if isOwner(uid);
+
+      match /nuggets/{nuggetId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidNugget(request.resource.data);
+        allow update: if isOwner(uid)
+          && isValidNugget(request.resource.data)
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(uid);
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ Deployed to GitHub Pages at **https://app.journal42.cloud**.
 - React 19 + TypeScript + Vite
 - React Router
 - Firebase Authentication (Google + email/password)
+- Cloud Firestore (per-user nuggets + draft)
 - Oxlint
 
 ## Scripts
@@ -20,12 +21,29 @@ npm run build
 npm run lint
 ```
 
-## Firebase auth setup
+## Firebase setup
 
 This repo is linked to Firebase project `journal42-cf467`.
 
+### Auth
+
 1. Enable **Google** and **Email/Password** under Authentication → Sign-in method.
 2. Under Authentication → Settings → Authorized domains, keep `localhost` and add `app.journal42.cloud`.
+
+### Firestore
+
+Journal entries and the composer draft sync to Cloud Firestore (`(default)` database, `eur3`).
+
+- Data: `users/{uid}` (`draft`, `updatedAt`) and `users/{uid}/nuggets/{id}` (`text`, `createdAt`)
+- Rules: [firestore.rules](firestore.rules) (owner-only prototype — review before broadly sharing the app)
+- Deploy rules/indexes:
+
+```bash
+npx -y firebase-tools@latest deploy --only firestore
+```
+
+### Web config
+
 3. Copy `.env.example` to `.env` and fill in the web app config from Project settings → Your apps:
 
 ```bash

@@ -1,5 +1,6 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app'
 import { getAuth, type Auth } from 'firebase/auth'
+import { getFirestore, type Firestore } from 'firebase/firestore'
 
 const apiKey = import.meta.env.VITE_FIREBASE_API_KEY
 const authDomain = import.meta.env.VITE_FIREBASE_AUTH_DOMAIN
@@ -12,6 +13,7 @@ export const isFirebaseConfigured = Boolean(
 
 let firebaseApp: FirebaseApp | null = null
 let auth: Auth | null = null
+let db: Firestore | null = null
 
 if (isFirebaseConfigured) {
   firebaseApp = initializeApp({
@@ -23,9 +25,10 @@ if (isFirebaseConfigured) {
     storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   })
   auth = getAuth(firebaseApp)
+  db = getFirestore(firebaseApp)
 }
 
-export { firebaseApp, auth }
+export { firebaseApp, auth, db }
 
 export function requireAuth(): Auth {
   if (!auth) {
@@ -34,4 +37,13 @@ export function requireAuth(): Auth {
     )
   }
   return auth
+}
+
+export function requireDb(): Firestore {
+  if (!db) {
+    throw new Error(
+      'Firebase is not configured. Copy .env.example to .env and fill in your Firebase web config.',
+    )
+  }
+  return db
 }

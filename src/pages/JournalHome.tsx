@@ -6,16 +6,18 @@ import {
   type Reflection,
   type ReflectionHistoryItem,
 } from '../lib/ai'
+import {
+  createNugget,
+  deleteNugget,
+  setDraft as persistDraft,
+  subscribeJournal,
+  updateNugget,
+  type Nugget,
+} from '../lib/journalStore'
+import AuthLoading from '../auth/AuthLoading'
 
-type Nugget = {
-  id: string
-  text: string
-  createdAt: number
-}
-
-const STORAGE_KEY = 'journal42.nuggets'
-const DRAFT_STORAGE_KEY = 'journal42.draft'
 const SHOW_PROOFREAD = false
+const DRAFT_PERSIST_MS = 400
 
 function formatTime(timestamp: number) {
   return new Intl.DateTimeFormat(undefined, {
@@ -79,25 +81,6 @@ function groupNuggetsByDay(nuggets: Nugget[], now: number): DayGroup[] {
   }
 
   return Array.from(groups.values())
-}
-
-function loadNuggets(): Nugget[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as Nugget[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function loadDraft(): string {
-  try {
-    return localStorage.getItem(DRAFT_STORAGE_KEY) ?? ''
-  } catch {
-    return ''
-  }
 }
 
 function createId() {
@@ -701,8 +684,10 @@ function AccountMenu({
 
 export default function JournalHome() {
   const { user, signOut } = useAuth()
-  const [draft, setDraft] = useState(() => loadDraft())
-  const [nuggets, setNuggets] = useState<Nugget[]>(() => loadNuggets())
+  const [draft, setDraft] = useState('')
+  const [nuggets, setNuggets] = useState<Nugget[]>([])
+  const [journalReady, setJournalReady] = useState(false)
+  const [journalError, setJournalError] = useState<string | null>(null)
   const [justDroppedId, setJustDroppedId] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -725,9 +710,50 @@ export default function JournalHome() {
   const composerGapRef = useRef<number | null>(null)
   const voiceLockedRef = useRef(false)
   const voicePanelOpenRef = useRef(false)
+  const draftDirtyRef = useRef(false)
+  const draftPersistTimerRef = useRef<number | null>(null)
+  const draftReadyRef = useRef(false)
+  const nuggetsReadyRef = useRef(false)
   const listLabelId = useId()
   const dayGroups = useMemo(() => groupNuggetsByDay(nuggets, now), [nuggets, now])
   const reflectionHistory = useMemo(() => historyFromNuggets(nuggets), [nuggets])
+
+  function markJournalReady() {
+    if (draftReadyRef.current && nuggetsReadyRef.current) {
+      setJournalReady(true)
+    }
+  }
+
+  function clearDraftPersistTimer() {
+    if (draftPersistTimerRef.current !== null) {
+      window.clearTimeout(draftPersistTimerRef.current)
+      draftPersistTimerRef.current = null
+    }
+  }
+
+  function scheduleDraftPersist(nextDraft: string) {
+    if (!user) return
+    clearDraftPersistTimer()
+    const uid = user.uid
+    draftPersistTimerRef.current = window.setTimeout(() => {
+      draftPersistTimerRef.current = null
+      void persistDraft(uid, nextDraft)
+        .then(() => {
+          draftDirtyRef.current = false
+        })
+        .catch((error: unknown) => {
+          setJournalError(
+            error instanceof Error ? error.message : 'Could not save draft.',
+          )
+        })
+    }, DRAFT_PERSIST_MS)
+  }
+
+  function onDraftChange(value: string) {
+    draftDirtyRef.current = true
+    setDraft(value)
+    scheduleDraftPersist(value)
+  }
   const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({})
   const viewedVoiceTurn = voicePanel?.[voiceViewIndex] ?? null
   const isViewingLatestVoice = Boolean(
@@ -788,12 +814,49 @@ export default function JournalHome() {
   }
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nuggets))
-  }, [nuggets])
+    if (!user) {
+      clearDraftPersistTimer()
+      draftDirtyRef.current = false
+      draftReadyRef.current = false
+      nuggetsReadyRef.current = false
+      setJournalReady(false)
+      setJournalError(null)
+      setDraft('')
+      setNuggets([])
+      return
+    }
 
-  useEffect(() => {
-    localStorage.setItem(DRAFT_STORAGE_KEY, draft)
-  }, [draft])
+    draftReadyRef.current = false
+    nuggetsReadyRef.current = false
+    setJournalReady(false)
+    setJournalError(null)
+
+    const unsubscribe = subscribeJournal(user.uid, {
+      onDraft: (remoteDraft) => {
+        if (!draftDirtyRef.current) {
+          setDraft(remoteDraft)
+        }
+        draftReadyRef.current = true
+        markJournalReady()
+      },
+      onNuggets: (remoteNuggets) => {
+        setNuggets(remoteNuggets)
+        nuggetsReadyRef.current = true
+        markJournalReady()
+      },
+      onError: (error) => {
+        setJournalError(error.message)
+        draftReadyRef.current = true
+        nuggetsReadyRef.current = true
+        setJournalReady(true)
+      },
+    })
+
+    return () => {
+      clearDraftPersistTimer()
+      unsubscribe()
+    }
+  }, [user])
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000)
@@ -970,7 +1033,7 @@ export default function JournalHome() {
 
   function dropNugget() {
     const text = draft.trim()
-    if (!text) return
+    if (!text || !user) return
 
     const nugget: Nugget = {
       id: createId(),
@@ -982,23 +1045,48 @@ export default function JournalHome() {
     setNuggets((current) => [nugget, ...current])
     setJustDroppedId(nugget.id)
     setEditingId(null)
+    draftDirtyRef.current = true
+    clearDraftPersistTimer()
     setDraft('')
     clearVoiceConversation()
     inputRef.current?.focus({ preventScroll: true })
+
+    const uid = user.uid
+    void Promise.all([createNugget(uid, nugget), persistDraft(uid, '')])
+      .then(() => {
+        draftDirtyRef.current = false
+      })
+      .catch((error: unknown) => {
+        setJournalError(
+          error instanceof Error ? error.message : 'Could not save thought.',
+        )
+      })
   }
 
   function removeNugget(id: string) {
+    if (!user) return
     setNuggets((current) => current.filter((nugget) => nugget.id !== id))
     if (editingId === id) setEditingId(null)
     inputRef.current?.focus({ preventScroll: true })
+    void deleteNugget(user.uid, id).catch((error: unknown) => {
+      setJournalError(
+        error instanceof Error ? error.message : 'Could not remove thought.',
+      )
+    })
   }
 
   function saveNugget(id: string, text: string) {
+    if (!user) return
     setNuggets((current) =>
       current.map((nugget) => (nugget.id === id ? { ...nugget, text } : nugget)),
     )
     setEditingId(null)
     inputRef.current?.focus({ preventScroll: true })
+    void updateNugget(user.uid, id, text).catch((error: unknown) => {
+      setJournalError(
+        error instanceof Error ? error.message : 'Could not update thought.',
+      )
+    })
   }
 
   function onComposerKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1009,6 +1097,10 @@ export default function JournalHome() {
   }
 
   const canDrop = draft.trim().length > 0
+
+  if (!journalReady) {
+    return <AuthLoading />
+  }
 
   return (
     <div className="app-shell">
@@ -1032,6 +1124,11 @@ export default function JournalHome() {
       </header>
 
       <main className="app-main">
+        {journalError ? (
+          <p className="journal-sync-error" role="alert">
+            {journalError}
+          </p>
+        ) : null}
         <section className="journal-stage">
           <h1 className="journal-prompt">Get it out of your head.</h1>
           <p className="journal-hint">Start with whatever is loudest.</p>
@@ -1056,7 +1153,7 @@ export default function JournalHome() {
                     ref={inputRef}
                     className="nugget-input"
                     value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
+                    onChange={(event) => onDraftChange(event.target.value)}
                     onKeyDown={onComposerKeyDown}
                     placeholder="What's rattling around up there?"
                     rows={1}

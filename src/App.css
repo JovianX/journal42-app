@@ -296,6 +296,16 @@
   padding: 0 clamp(1.25rem, 4vw, 2rem) 3.5rem;
 }
 
+.journal-sync-error {
+  margin: 0.75rem 0 0;
+  padding: 0.65rem 0.85rem;
+  color: var(--ink);
+  background: color-mix(in srgb, #b42318 12%, transparent);
+  border-radius: 0.5rem;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
 .journal-stage {
   display: flex;
   flex-direction: column;
