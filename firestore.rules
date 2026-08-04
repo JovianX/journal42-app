@@ -10,12 +10,19 @@ service cloud.firestore {
     // Fields:
     //   - draft: string (required on write, max 100000 chars) - composer draft
     //   - updatedAt: number (required on write) - draft last-write ms epoch
+    //   - discussion: list (optional, max 40 turns) - composer reflection thread
     //
     // Collection: users/{uid}/nuggets
     // Document ID: client-generated id
     // Fields:
     //   - text: string (required, 1..100000 chars) - journal entry body
     //   - createdAt: number (required, immutable) - ms epoch
+    //   - discussion: list (optional, max 40 turns) - saved reflection thread
+    //
+    // Discussion turn fields:
+    //   - id: string
+    //   - comment: string (optional) - user reply that steered this turn
+    //   - reflection: map (optional) with text + optional historyCite
     //
     // ===============================================================
 
@@ -27,19 +34,27 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == uid;
     }
 
+    function isValidDiscussion(data) {
+      return data is list
+        && data.size() > 0
+        && data.size() <= 40;
+    }
+
     function isValidUserDoc(data) {
-      return data.keys().hasOnly(['draft', 'updatedAt'])
+      return data.keys().hasOnly(['draft', 'updatedAt', 'discussion'])
         && data.draft is string
         && data.draft.size() <= 100000
-        && data.updatedAt is number;
+        && data.updatedAt is number
+        && (!('discussion' in data) || isValidDiscussion(data.discussion));
     }
 
     function isValidNugget(data) {
-      return data.keys().hasOnly(['text', 'createdAt'])
+      return data.keys().hasOnly(['text', 'createdAt', 'discussion'])
         && data.text is string
         && data.text.size() > 0
         && data.text.size() <= 100000
-        && data.createdAt is number;
+        && data.createdAt is number
+        && (!('discussion' in data) || isValidDiscussion(data.discussion));
     }
 
     match /users/{uid} {

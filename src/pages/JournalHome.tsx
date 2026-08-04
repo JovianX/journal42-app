@@ -3,15 +3,19 @@ import type { User } from 'firebase/auth'
 import { useAuth } from '../auth/useAuth'
 import {
   requestReflection,
+  toReflectionErrorMessage,
   type Reflection,
   type ReflectionHistoryItem,
 } from '../lib/ai'
 import {
   createNugget,
   deleteNugget,
+  persistableDiscussion,
   setDraft as persistDraft,
   subscribeJournal,
   updateNugget,
+  updateNuggetDiscussion,
+  type DiscussionTurn,
   type Nugget,
 } from '../lib/journalStore'
 import AuthLoading from '../auth/AuthLoading'
@@ -164,21 +168,25 @@ function animateComposerFace(
 }
 
 const DRAFT_REFLECT_MIN_CHARS = 20
-const DRAFT_REFLECT_IDLE_MS = 900
+const DRAFT_REFLECT_IDLE_MS = 1800
 const VOICE_PANEL_MS = 720
 const HISTORY_LIMIT = 8
-
-type VoiceTurn = {
-  id: string
-  comment?: string
-  reflection: Reflection
-}
 
 function historyFromNuggets(nuggets: Nugget[], excludeId?: string): ReflectionHistoryItem[] {
   return nuggets
     .filter((nugget) => nugget.id !== excludeId)
     .slice(0, HISTORY_LIMIT)
     .map(({ text, createdAt }) => ({ text, createdAt }))
+}
+
+function discussionFingerprint(discussion: DiscussionTurn[] | undefined) {
+  if (!discussion?.length) return ''
+  return discussion
+    .map(
+      (turn) =>
+        `${turn.id}:${turn.comment ?? ''}:${turn.reflection?.text ?? ''}:${turn.reflection?.historyCite ?? ''}`,
+    )
+    .join('|')
 }
 
 function ReflectionCopy({ reflection }: { reflection: Reflection }) {
@@ -195,6 +203,45 @@ function ReflectionCopy({ reflection }: { reflection: Reflection }) {
   )
 }
 
+function ReflectionOrbMark({ className }: { className?: string }) {
+  return (
+    <span
+      className={`reflection-orb is-mark${className ? ` ${className}` : ''}`}
+      aria-hidden="true"
+    >
+      <span className="reflection-orb-aura" />
+      <span className="reflection-orb-aura is-late" />
+      <span className="reflection-orb-core" />
+    </span>
+  )
+}
+
+function FormingReflection({
+  ariaLabel = 'Forming a reflection',
+  variant = 'panel',
+}: {
+  ariaLabel?: string
+  variant?: 'panel' | 'nugget'
+}) {
+  return (
+    <div
+      className={`forming-reflection forming-reflection-${variant}`}
+      role="status"
+      aria-live="polite"
+      aria-label={ariaLabel}
+    >
+      <ReflectionOrbMark className="is-forming" />
+      {variant === 'nugget' ? (
+        <div className="forming-reflection-skeleton" aria-hidden="true">
+          <span className="forming-reflection-line" style={{ width: '92%' }} />
+          <span className="forming-reflection-line" style={{ width: '74%' }} />
+          <span className="forming-reflection-line is-short" style={{ width: '48%' }} />
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 type NuggetItemProps = {
   nugget: Nugget
   history: ReflectionHistoryItem[]
@@ -204,6 +251,7 @@ type NuggetItemProps = {
   onStartEdit: () => void
   onCancelEdit: () => void
   onSaveEdit: (text: string) => void
+  onDiscussionChange: (discussion: DiscussionTurn[]) => void
   onRemove: () => void
 }
 
@@ -216,28 +264,50 @@ function NuggetItem({
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
+  onDiscussionChange,
   onRemove,
 }: NuggetItemProps) {
   const [editText, setEditText] = useState(nugget.text)
   const [menuOpen, setMenuOpen] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
   const [flipped, setFlipped] = useState(false)
-  const [reflection, setReflection] = useState<Reflection | null>(null)
+  const [discussion, setDiscussion] = useState<DiscussionTurn[]>(
+    () => nugget.discussion ?? [],
+  )
+  const [reply, setReply] = useState('')
+  const [replyOpen, setReplyOpen] = useState(false)
   const [reflectionLoading, setReflectionLoading] = useState(false)
   const [reflectionError, setReflectionError] = useState<string | null>(null)
+  const [retryReply, setRetryReply] = useState<string | null>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
+  const replyRef = useRef<HTMLTextAreaElement>(null)
   const itemRef = useRef<HTMLLIElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const reflectionRequestRef = useRef(0)
+  const discussionDirtyRef = useRef(false)
   const menuId = useId()
+  const storedFingerprint = discussionFingerprint(nugget.discussion)
+  const hasStoredReflection = discussion.some((turn) => turn.reflection)
+  const latestTurn = discussion[discussion.length - 1] ?? null
+  const showReplyComposer =
+    replyOpen && hasStoredReflection && !reflectionLoading
 
   useEffect(() => {
-    setReflection(null)
+    discussionDirtyRef.current = false
+    setDiscussion(nugget.discussion ?? [])
     setReflectionError(null)
     setReflectionLoading(false)
+    setRetryReply(null)
+    setReply('')
+    setReplyOpen(false)
     reflectionRequestRef.current += 1
     setFlipped(false)
   }, [nugget.id, nugget.text])
+
+  useEffect(() => {
+    if (discussionDirtyRef.current) return
+    setDiscussion(nugget.discussion ?? [])
+  }, [nugget.id, storedFingerprint, nugget.discussion])
 
   useEffect(() => {
     if (!isFresh) return
@@ -268,6 +338,11 @@ function NuggetItem({
     autosizeTextarea(editRef.current)
   }, [editText, isEditing])
 
+  useLayoutEffect(() => {
+    if (!showReplyComposer) return
+    autosizeTextarea(replyRef.current)
+  }, [showReplyComposer, reply])
+
   useEffect(() => {
     if (!menuOpen && !flipped) return
 
@@ -280,6 +355,14 @@ function NuggetItem({
 
     function onKeyDown(event: globalThis.KeyboardEvent) {
       if (event.key === 'Escape') {
+        if (reply.trim()) {
+          setReply('')
+          return
+        }
+        if (replyOpen) {
+          setReplyOpen(false)
+          return
+        }
         if (flipped) {
           setFlipped(false)
           return
@@ -295,7 +378,7 @@ function NuggetItem({
       document.removeEventListener('mousedown', onPointerDown)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [menuOpen, flipped])
+  }, [menuOpen, flipped, replyOpen, reply])
 
   function save() {
     const text = editText.trim()
@@ -315,12 +398,8 @@ function NuggetItem({
     }
   }
 
-  function flipToReflection() {
-    setMenuOpen(false)
-    setConfirmRemove(false)
-    setFlipped(true)
-
-    if (reflection || reflectionLoading || !user) return
+  function fetchTurn(steer = '', pendingId?: string) {
+    if (reflectionLoading || !user) return
     if (nugget.text.trim().length < DRAFT_REFLECT_MIN_CHARS) {
       setReflectionError('Write a little more before reflecting.')
       return
@@ -330,21 +409,43 @@ function NuggetItem({
     reflectionRequestRef.current = requestId
     setReflectionLoading(true)
     setReflectionError(null)
+    if (steer) setRetryReply(steer)
+    else setRetryReply(null)
 
     void requestReflection({
       user,
       draft: nugget.text,
       history,
+      reply: steer,
     })
       .then((next) => {
         if (reflectionRequestRef.current !== requestId) return
-        setReflection(next)
+        setDiscussion((current) => {
+          let updated: DiscussionTurn[]
+          if (steer) {
+            if (pendingId && current.some((turn) => turn.id === pendingId)) {
+              updated = current.map((turn) =>
+                turn.id === pendingId ? { ...turn, reflection: next } : turn,
+              )
+            } else {
+              updated = [
+                ...current,
+                { id: createId(), comment: steer, reflection: next },
+              ]
+            }
+          } else {
+            updated = [{ id: createId(), reflection: next }]
+          }
+          onDiscussionChange(persistableDiscussion(updated))
+          return updated
+        })
+        discussionDirtyRef.current = true
+        setReflectionError(null)
+        setRetryReply(null)
       })
       .catch((error: unknown) => {
         if (reflectionRequestRef.current !== requestId) return
-        setReflectionError(
-          error instanceof Error ? error.message : 'Reflection unavailable.',
-        )
+        setReflectionError(toReflectionErrorMessage(error))
       })
       .finally(() => {
         if (reflectionRequestRef.current !== requestId) return
@@ -352,14 +453,60 @@ function NuggetItem({
       })
   }
 
+  function flipToReflection() {
+    setMenuOpen(false)
+    setConfirmRemove(false)
+    setFlipped(true)
+
+    if (reflectionLoading || !user) return
+    if (hasStoredReflection && !reflectionError) return
+    fetchTurn(retryReply ?? '')
+  }
+
+  function retryReflection() {
+    if (reflectionLoading) return
+    if (retryReply) {
+      const pending = discussion.find(
+        (turn) => turn.comment === retryReply && !turn.reflection,
+      )
+      if (pending) {
+        fetchTurn(retryReply, pending.id)
+        return
+      }
+      const pendingId = createId()
+      discussionDirtyRef.current = true
+      setDiscussion((current) => [...current, { id: pendingId, comment: retryReply }])
+      fetchTurn(retryReply, pendingId)
+      return
+    }
+    fetchTurn()
+  }
+
+  function sendReply() {
+    const steer = reply.trim()
+    if (!steer || !hasStoredReflection || !user || reflectionLoading) return
+
+    const pendingId = createId()
+    setReply('')
+    setReflectionError(null)
+    discussionDirtyRef.current = true
+    setDiscussion((current) => [
+      ...current.filter((turn) => turn.reflection),
+      { id: pendingId, comment: steer },
+    ])
+    fetchTurn(steer, pendingId)
+  }
+
   function flipToThought() {
+    setReplyOpen(false)
+    setReply('')
     setFlipped(false)
   }
 
   return (
     <li
       ref={itemRef}
-      className={`nugget${isFresh ? ' nugget-fresh' : ''}${isEditing ? ' nugget-editing' : ''}${menuOpen ? ' is-menu-open' : ''}${flipped ? ' is-flipped' : ''}`}
+      className={`nugget${isFresh ? ' nugget-fresh' : ''}${isEditing ? ' nugget-editing' : ''}${menuOpen ? ' is-menu-open' : ''}${flipped ? ' is-flipped' : ''}${hasStoredReflection ? ' has-reflection' : ''}`}
     >
       {isEditing ? (
         <>
@@ -400,11 +547,11 @@ function NuggetItem({
                 <span className="nugget-time">{formatTime(nugget.createdAt)}</span>
                 <button
                   type="button"
-                  className="nugget-reflect-chip"
+                  className={`nugget-reflect-chip${hasStoredReflection ? ' has-reflection' : ''}`}
                   onClick={flipToReflection}
-                  aria-label="Show reflection"
+                  aria-label={hasStoredReflection ? 'Show saved reflection' : 'Show reflection'}
                 >
-                  reflect
+                  {hasStoredReflection ? 'reflected' : 'reflect'}
                 </button>
               </div>
 
@@ -475,7 +622,7 @@ function NuggetItem({
                           role="menuitem"
                           onClick={flipToReflection}
                         >
-                          Reflect
+                          {hasStoredReflection ? 'View reflection' : 'Reflect'}
                         </button>
                         <button
                           type="button"
@@ -493,25 +640,110 @@ function NuggetItem({
             </div>
 
             <div className="nugget-face nugget-face-back" aria-hidden={!flipped}>
-              <button
-                type="button"
-                className="nugget-reflection"
-                onClick={flipToThought}
-                aria-label="Back to thought"
-              >
-                <p className={`nugget-reflection-text${reflectionLoading ? ' is-forming' : ''}`}>
-                  {reflectionLoading ? (
-                    'Listening…'
-                  ) : reflectionError ? (
-                    reflectionError
-                  ) : reflection ? (
-                    <ReflectionCopy reflection={reflection} />
+              <div className="nugget-reflection">
+                {discussion.length > 0 ? (
+                  <div className="nugget-discussion">
+                    {discussion.map((turn) => (
+                      <div
+                        key={turn.id}
+                        className={`nugget-discussion-turn${turn.reflection ? ' is-complete' : ' is-pending'}`}
+                      >
+                        {turn.comment ? (
+                          <p className="nugget-discussion-comment">{turn.comment}</p>
+                        ) : null}
+                        {turn.reflection ? (
+                          <p className="nugget-reflection-text">
+                            <ReflectionCopy reflection={turn.reflection} />
+                          </p>
+                        ) : reflectionLoading ? (
+                          <FormingReflection variant="nugget" />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {reflectionLoading && (!latestTurn || latestTurn.reflection) ? (
+                  <FormingReflection variant="nugget" />
+                ) : null}
+
+                {reflectionError && !reflectionLoading ? (
+                  <div className="draft-voice-error">
+                    <p className="nugget-reflection-text">{reflectionError}</p>
+                    <button
+                      type="button"
+                      className="draft-voice-retry"
+                      onClick={retryReflection}
+                    >
+                      Try again
+                    </button>
+                  </div>
+                ) : null}
+
+                {!reflectionLoading &&
+                !reflectionError &&
+                discussion.length === 0 ? (
+                  <p className="nugget-reflection-text">
+                    Tap reflect again when you’re ready.
+                  </p>
+                ) : null}
+
+                {hasStoredReflection && !reflectionLoading ? (
+                  showReplyComposer ? (
+                    <div className="nugget-discussion-reply">
+                      <textarea
+                        ref={replyRef}
+                        className="nugget-discussion-reply-input"
+                        value={reply}
+                        onChange={(event) => setReply(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            event.preventDefault()
+                            if (reply.trim()) {
+                              setReply('')
+                              return
+                            }
+                            setReplyOpen(false)
+                            return
+                          }
+                          if (event.key === 'Enter' && !event.shiftKey) {
+                            event.preventDefault()
+                            sendReply()
+                          }
+                        }}
+                        rows={1}
+                        aria-label="Continue reflection"
+                        placeholder="Continue the thread…"
+                      />
+                      <button
+                        type="button"
+                        className="nugget-discussion-reply-submit"
+                        onClick={sendReply}
+                        disabled={!reply.trim()}
+                        aria-label="Send"
+                      >
+                        Send
+                      </button>
+                    </div>
                   ) : (
-                    'Tap reflect again when you’re ready.'
-                  )}
-                </p>
-                <span className="nugget-reflection-hint">Tap to return</span>
-              </button>
+                    <button
+                      type="button"
+                      className="nugget-discussion-reply-trigger"
+                      onClick={() => setReplyOpen(true)}
+                    >
+                      Continue
+                    </button>
+                  )
+                ) : null}
+
+                <button
+                  type="button"
+                  className="nugget-reflection-hint"
+                  onClick={flipToThought}
+                >
+                  Tap to return
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -693,30 +925,41 @@ export default function JournalHome() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [signingOut, setSigningOut] = useState(false)
   const [proofread, setProofread] = useState(false)
-  const [voiceThread, setVoiceThread] = useState<VoiceTurn[]>([])
-  const [voicePanel, setVoicePanel] = useState<VoiceTurn[] | null>(null)
+  const [voiceThread, setVoiceThread] = useState<DiscussionTurn[]>([])
+  const [voicePanel, setVoicePanel] = useState<DiscussionTurn[] | null>(null)
   const [voicePanelOpen, setVoicePanelOpen] = useState(false)
   const [voiceReplyOpen, setVoiceReplyOpen] = useState(false)
   const [voiceReply, setVoiceReply] = useState('')
   const [voiceViewIndex, setVoiceViewIndex] = useState(0)
   const [voiceLoading, setVoiceLoading] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
+  const [voiceRetryReply, setVoiceRetryReply] = useState<string | null>(null)
+  const [reflectionInvite, setReflectionInvite] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const voiceReplyRef = useRef<HTMLTextAreaElement>(null)
+  const shouldRefocusReplyRef = useRef(false)
   const composerFrameRef = useRef<HTMLFormElement>(null)
   const composerFaceRef = useRef<HTMLDivElement>(null)
   const composerBarDockRef = useRef<HTMLDivElement>(null)
   const composerGapRef = useRef<number | null>(null)
   const voiceLockedRef = useRef(false)
   const voicePanelOpenRef = useRef(false)
+  const voiceFetchAbortRef = useRef<AbortController | null>(null)
   const draftDirtyRef = useRef(false)
+  const discussionDirtyRef = useRef(false)
   const draftPersistTimerRef = useRef<number | null>(null)
   const draftReadyRef = useRef(false)
   const nuggetsReadyRef = useRef(false)
+  const voiceThreadRef = useRef<DiscussionTurn[]>([])
+  const draftRef = useRef(draft)
   const listLabelId = useId()
   const dayGroups = useMemo(() => groupNuggetsByDay(nuggets, now), [nuggets, now])
   const reflectionHistory = useMemo(() => historyFromNuggets(nuggets), [nuggets])
+  const showReflectionOrb = reflectionInvite && !voicePanelOpen
+
+  voiceThreadRef.current = voiceThread
+  draftRef.current = draft
 
   function markJournalReady() {
     if (draftReadyRef.current && nuggetsReadyRef.current) {
@@ -731,15 +974,21 @@ export default function JournalHome() {
     }
   }
 
-  function scheduleDraftPersist(nextDraft: string) {
+  function scheduleDraftPersist(
+    nextDraft: string,
+    nextDiscussion?: DiscussionTurn[],
+  ) {
     if (!user) return
     clearDraftPersistTimer()
     const uid = user.uid
+    const discussion =
+      nextDiscussion ?? persistableDiscussion(voiceThreadRef.current)
     draftPersistTimerRef.current = window.setTimeout(() => {
       draftPersistTimerRef.current = null
-      void persistDraft(uid, nextDraft)
+      void persistDraft(uid, nextDraft, discussion)
         .then(() => {
           draftDirtyRef.current = false
+          discussionDirtyRef.current = false
         })
         .catch((error: unknown) => {
           setJournalError(
@@ -761,35 +1010,43 @@ export default function JournalHome() {
   )
   const canViewEarlierVoice = voiceViewIndex > 0
   const canViewLaterVoice = Boolean(voicePanel && voiceViewIndex < voicePanel.length - 1)
-  const showVoicePanel = Boolean(voicePanel && viewedVoiceTurn) || voiceLoading || Boolean(voiceError)
+  const hasVoiceReflection = Boolean(
+    voicePanel?.some((turn) => turn.reflection) ||
+      voiceThread.some((turn) => turn.reflection),
+  )
+  const showVoiceComposer =
+    voiceReplyOpen &&
+    isViewingLatestVoice &&
+    (hasVoiceReflection || Boolean(voiceRetryReply))
+  const showVoiceReplyTrigger =
+    !voiceReplyOpen &&
+    hasVoiceReflection &&
+    isViewingLatestVoice &&
+    !voiceLoading &&
+    Boolean(viewedVoiceTurn?.reflection)
+  const showVoicePanel =
+    Boolean(viewedVoiceTurn) || voiceLoading || Boolean(voiceError)
+  const showInitialForming =
+    voiceLoading && (!viewedVoiceTurn || Boolean(viewedVoiceTurn.reflection))
 
   useEffect(() => {
-    if (voiceThread.length > 0 || voiceLoading || voiceError) {
-      if (voiceThread.length > 0) {
-        setVoicePanel(voiceThread)
-        setVoiceViewIndex(voiceThread.length - 1)
-      } else {
-        setVoicePanel(null)
-        setVoiceViewIndex(0)
-      }
-      if (voicePanelOpenRef.current) return
-
-      const frame = window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          voicePanelOpenRef.current = true
-          setVoicePanelOpen(true)
-        })
-      })
-      return () => window.cancelAnimationFrame(frame)
+    if (voiceThread.length > 0) {
+      setVoicePanel(voiceThread)
+      setVoiceViewIndex(voiceThread.length - 1)
+      return
     }
 
-    voicePanelOpenRef.current = false
-    setVoicePanelOpen(false)
-    setVoiceViewIndex(0)
+    if (voiceLoading || voiceError) {
+      return
+    }
+
     const timer = window.setTimeout(() => {
       setVoicePanel(null)
-      setVoiceReplyOpen(false)
-      setVoiceReply('')
+      setVoiceViewIndex(0)
+      if (!voicePanelOpenRef.current) {
+        setVoiceReplyOpen(false)
+        setVoiceReply('')
+      }
     }, VOICE_PANEL_MS)
     return () => window.clearTimeout(timer)
   }, [voiceThread, voiceLoading, voiceError])
@@ -817,12 +1074,15 @@ export default function JournalHome() {
     if (!user) {
       clearDraftPersistTimer()
       draftDirtyRef.current = false
+      discussionDirtyRef.current = false
       draftReadyRef.current = false
       nuggetsReadyRef.current = false
       setJournalReady(false)
       setJournalError(null)
       setDraft('')
       setNuggets([])
+      setVoiceThread([])
+      voiceLockedRef.current = false
       return
     }
 
@@ -832,9 +1092,24 @@ export default function JournalHome() {
     setJournalError(null)
 
     const unsubscribe = subscribeJournal(user.uid, {
-      onDraft: (remoteDraft) => {
+      onDraft: (remoteDraft, remoteDiscussion) => {
         if (!draftDirtyRef.current) {
           setDraft(remoteDraft)
+        }
+        if (!discussionDirtyRef.current && !draftDirtyRef.current) {
+          const saved = persistableDiscussion(remoteDiscussion)
+          if (
+            discussionFingerprint(saved) !==
+            discussionFingerprint(voiceThreadRef.current)
+          ) {
+            setVoiceThread(saved)
+            if (saved.length > 0) {
+              voiceLockedRef.current = true
+              setReflectionInvite(true)
+            } else {
+              voiceLockedRef.current = false
+            }
+          }
         }
         draftReadyRef.current = true
         markJournalReady()
@@ -887,62 +1162,48 @@ export default function JournalHome() {
   useEffect(() => {
     const trimmed = draft.trim()
     if (trimmed.length < DRAFT_REFLECT_MIN_CHARS || !user) {
+      const hadDiscussion = voiceThreadRef.current.length > 0
+      setReflectionInvite(false)
       setVoiceThread([])
       setVoiceReplyOpen(false)
       setVoiceReply('')
       setVoiceLoading(false)
       setVoiceError(null)
+      setVoiceRetryReply(null)
       voiceLockedRef.current = false
+      voicePanelOpenRef.current = false
+      setVoicePanelOpen(false)
+      voiceFetchAbortRef.current?.abort()
+      voiceFetchAbortRef.current = null
+      if (hadDiscussion) {
+        discussionDirtyRef.current = true
+        scheduleDraftPersist(draft, [])
+      }
       return
     }
 
     if (voiceLockedRef.current) return
 
-    const controller = new AbortController()
-    let cancelled = false
+    setReflectionInvite(false)
+    setVoiceThread([])
+    setVoiceError(null)
+    setVoiceRetryReply(null)
+    setVoiceLoading(false)
+    voicePanelOpenRef.current = false
+    setVoicePanelOpen(false)
+    setVoiceReplyOpen(false)
+    setVoiceReply('')
+    voiceFetchAbortRef.current?.abort()
+    voiceFetchAbortRef.current = null
 
     const idleTimer = window.setTimeout(() => {
-      setVoiceLoading(true)
-      setVoiceError(null)
-      setVoiceThread([])
-
-      void requestReflection({
-        user,
-        draft: trimmed,
-        history: reflectionHistory,
-        signal: controller.signal,
-      })
-        .then((next) => {
-          if (cancelled || voiceLockedRef.current) return
-          setVoiceThread([
-            {
-              id: createId(),
-              reflection: next,
-            },
-          ])
-          setVoiceError(null)
-        })
-        .catch((error: unknown) => {
-          if (cancelled || voiceLockedRef.current) return
-          if (error instanceof DOMException && error.name === 'AbortError') return
-          setVoiceThread([])
-          setVoiceError(
-            error instanceof Error ? error.message : 'Reflection unavailable.',
-          )
-        })
-        .finally(() => {
-          if (cancelled) return
-          setVoiceLoading(false)
-        })
+      setReflectionInvite(true)
     }, DRAFT_REFLECT_IDLE_MS)
 
     return () => {
-      cancelled = true
-      controller.abort()
       window.clearTimeout(idleTimer)
-      setVoiceLoading(false)
     }
-  }, [draft, reflectionHistory, user])
+  }, [draft, user])
 
   useLayoutEffect(() => {
     const frame = composerFrameRef.current
@@ -957,38 +1218,169 @@ export default function JournalHome() {
   }, [draft])
 
   useLayoutEffect(() => {
-    if (!voiceReplyOpen) return
+    if (!showVoiceComposer || !voicePanelOpen) return
     autosizeTextarea(voiceReplyRef.current)
+  }, [showVoiceComposer, voicePanelOpen, voiceReply])
+
+  useLayoutEffect(() => {
+    if (!voicePanelOpen || !showVoiceComposer || voiceLoading) return
+    if (!shouldRefocusReplyRef.current) return
+    shouldRefocusReplyRef.current = false
     voiceReplyRef.current?.focus({ preventScroll: true })
-  }, [voiceReplyOpen, voiceReply])
+  }, [voicePanelOpen, showVoiceComposer, voiceLoading, voiceReplyOpen])
 
   function clearVoiceConversation() {
+    voiceFetchAbortRef.current?.abort()
+    voiceFetchAbortRef.current = null
     setVoiceThread([])
     setVoiceReplyOpen(false)
     setVoiceReply('')
     setVoiceLoading(false)
     setVoiceError(null)
+    setVoiceRetryReply(null)
+    setReflectionInvite(false)
     voiceLockedRef.current = false
+    voicePanelOpenRef.current = false
+    setVoicePanelOpen(false)
+    discussionDirtyRef.current = true
+    scheduleDraftPersist(draftRef.current, [])
+  }
+
+  function closeVoicePanel() {
+    voiceFetchAbortRef.current?.abort()
+    voiceFetchAbortRef.current = null
+    setVoiceLoading(false)
+    setVoiceError(null)
+    setVoiceRetryReply(null)
+    voicePanelOpenRef.current = false
+    setVoicePanelOpen(false)
+    setVoiceReplyOpen(false)
+    setVoiceReply('')
+  }
+
+  function fetchReflection(reply = '', pendingId?: string) {
+    if (!user || voiceLoading) return
+    const trimmed = draft.trim()
+    if (trimmed.length < DRAFT_REFLECT_MIN_CHARS) return
+
+    voicePanelOpenRef.current = true
+    setVoicePanelOpen(true)
+
+    const controller = new AbortController()
+    voiceFetchAbortRef.current?.abort()
+    voiceFetchAbortRef.current = controller
+    setVoiceLoading(true)
+    setVoiceError(null)
+    if (reply) {
+      setVoiceRetryReply(reply)
+      voiceLockedRef.current = true
+    } else {
+      setVoiceRetryReply(null)
+    }
+
+    void requestReflection({
+      user,
+      draft: trimmed,
+      history: reflectionHistory,
+      reply,
+      signal: controller.signal,
+    })
+      .then((next) => {
+        if (controller.signal.aborted) return
+        setVoiceThread((current) => {
+          let updated: DiscussionTurn[]
+          if (reply) {
+            if (pendingId && current.some((turn) => turn.id === pendingId)) {
+              updated = current.map((turn) =>
+                turn.id === pendingId ? { ...turn, reflection: next } : turn,
+              )
+            } else {
+              updated = [
+                ...current,
+                {
+                  id: createId(),
+                  comment: reply,
+                  reflection: next,
+                },
+              ]
+            }
+          } else {
+            updated = [
+              {
+                id: createId(),
+                reflection: next,
+              },
+            ]
+          }
+          discussionDirtyRef.current = true
+          scheduleDraftPersist(draftRef.current, persistableDiscussion(updated))
+          return updated
+        })
+        setVoiceError(null)
+        setVoiceRetryReply(null)
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        if (!reply) setVoiceThread([])
+        setVoiceError(toReflectionErrorMessage(error))
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return
+        setVoiceLoading(false)
+      })
+  }
+
+  function openReflection() {
+    if (!user || voiceLoading) return
+    const trimmed = draft.trim()
+    if (trimmed.length < DRAFT_REFLECT_MIN_CHARS) return
+
+    voicePanelOpenRef.current = true
+    setVoicePanelOpen(true)
+
+    if (voiceThread.some((turn) => turn.reflection)) {
+      setVoicePanel(voiceThread)
+      setVoiceViewIndex(voiceThread.length - 1)
+      return
+    }
+
+    fetchReflection()
+  }
+
+  function retryVoiceReflection() {
+    if (voiceLoading) return
+    if (voiceRetryReply) {
+      const pending = voiceThread.find(
+        (turn) => turn.comment === voiceRetryReply && !turn.reflection,
+      )
+      if (pending) {
+        fetchReflection(voiceRetryReply, pending.id)
+        return
+      }
+      const pendingId = createId()
+      setVoiceThread((current) => [
+        ...current,
+        { id: pendingId, comment: voiceRetryReply },
+      ])
+      fetchReflection(voiceRetryReply, pendingId)
+      return
+    }
+    fetchReflection()
   }
 
   function openVoiceReply() {
-    if (voiceLoading) return
+    if (voiceLoading || !hasVoiceReflection) return
     const latestIndex = Math.max((voicePanel?.length ?? voiceThread.length) - 1, 0)
     if (voiceViewIndex !== latestIndex) {
       setVoiceViewIndex(latestIndex)
     }
     setVoiceReplyOpen(true)
-  }
-
-  function closeVoiceReply() {
-    setVoiceReplyOpen(false)
-    setVoiceReply('')
+    shouldRefocusReplyRef.current = true
   }
 
   function viewEarlierVoice() {
     if (!canViewEarlierVoice) return
-    setVoiceReplyOpen(false)
-    setVoiceReply('')
     setVoiceViewIndex((index) => Math.max(0, index - 1))
   }
 
@@ -997,48 +1389,31 @@ export default function JournalHome() {
     setVoiceViewIndex((index) => Math.min(voicePanel.length - 1, index + 1))
   }
 
-  async function sendVoiceReply() {
+  function sendVoiceReply() {
     const steer = voiceReply.trim()
-    if (!steer || voiceThread.length === 0 || !user || voiceLoading) return
+    if (!steer || !hasVoiceReflection || !user || voiceLoading) return
 
-    voiceLockedRef.current = true
-    setVoiceLoading(true)
-    setVoiceError(null)
+    const pendingId = createId()
     setVoiceReply('')
-    setVoiceReplyOpen(false)
-
-    try {
-      const next = await requestReflection({
-        user,
-        draft: draft.trim(),
-        history: reflectionHistory,
-        reply: steer,
-      })
-      setVoiceThread((current) => [
-        ...current,
-        {
-          id: createId(),
-          comment: steer,
-          reflection: next,
-        },
-      ])
-    } catch (error: unknown) {
-      setVoiceError(
-        error instanceof Error ? error.message : 'Reflection unavailable.',
-      )
-    } finally {
-      setVoiceLoading(false)
-    }
+    setVoiceError(null)
+    shouldRefocusReplyRef.current = true
+    setVoiceThread((current) => [
+      ...current.filter((turn) => turn.reflection),
+      { id: pendingId, comment: steer },
+    ])
+    fetchReflection(steer, pendingId)
   }
 
   function dropNugget() {
     const text = draft.trim()
     if (!text || !user) return
 
+    const discussion = persistableDiscussion(voiceThread)
     const nugget: Nugget = {
       id: createId(),
       text,
       createdAt: Date.now(),
+      ...(discussion.length > 0 ? { discussion } : {}),
     }
 
     setSending(true)
@@ -1046,15 +1421,28 @@ export default function JournalHome() {
     setJustDroppedId(nugget.id)
     setEditingId(null)
     draftDirtyRef.current = true
+    discussionDirtyRef.current = true
     clearDraftPersistTimer()
     setDraft('')
-    clearVoiceConversation()
+    setVoiceThread([])
+    setVoiceReplyOpen(false)
+    setVoiceReply('')
+    setVoiceLoading(false)
+    setVoiceError(null)
+    setVoiceRetryReply(null)
+    setReflectionInvite(false)
+    voiceLockedRef.current = false
+    voicePanelOpenRef.current = false
+    setVoicePanelOpen(false)
+    voiceFetchAbortRef.current?.abort()
+    voiceFetchAbortRef.current = null
     inputRef.current?.focus({ preventScroll: true })
 
     const uid = user.uid
-    void Promise.all([createNugget(uid, nugget), persistDraft(uid, '')])
+    void Promise.all([createNugget(uid, nugget), persistDraft(uid, '', [])])
       .then(() => {
         draftDirtyRef.current = false
+        discussionDirtyRef.current = false
       })
       .catch((error: unknown) => {
         setJournalError(
@@ -1078,13 +1466,39 @@ export default function JournalHome() {
   function saveNugget(id: string, text: string) {
     if (!user) return
     setNuggets((current) =>
-      current.map((nugget) => (nugget.id === id ? { ...nugget, text } : nugget)),
+      current.map((nugget) =>
+        nugget.id === id ? { id, text, createdAt: nugget.createdAt } : nugget,
+      ),
     )
     setEditingId(null)
     inputRef.current?.focus({ preventScroll: true })
     void updateNugget(user.uid, id, text).catch((error: unknown) => {
       setJournalError(
         error instanceof Error ? error.message : 'Could not update thought.',
+      )
+    })
+  }
+
+  function saveNuggetDiscussion(id: string, discussion: DiscussionTurn[]) {
+    if (!user) return
+    const saved = persistableDiscussion(discussion)
+    setNuggets((current) =>
+      current.map((nugget) =>
+        nugget.id === id
+          ? {
+              ...nugget,
+              ...(saved.length > 0
+                ? { discussion: saved }
+                : { discussion: undefined }),
+            }
+          : nugget,
+      ),
+    )
+    void updateNuggetDiscussion(user.uid, id, saved).catch((error: unknown) => {
+      setJournalError(
+        error instanceof Error
+          ? error.message
+          : 'Could not save reflection.',
       )
     })
   }
@@ -1161,64 +1575,95 @@ export default function JournalHome() {
                   />
                 </div>
                 <div
-                  className={`nugget-composer-bar nugget-composer-bar-sizer${SHOW_PROOFREAD ? ' has-proofread' : ''}`}
+                  className={`nugget-composer-bar nugget-composer-bar-sizer${SHOW_PROOFREAD ? ' has-proofread' : ''}${showReflectionOrb ? ' has-orb' : ''}`}
                   aria-hidden="true"
                 >
-                  {SHOW_PROOFREAD ? (
-                    <div className="proofread-toggle">
-                      <span className="proofread-toggle-label">Proofread</span>
-                      <span className="proofread-switch">
-                        <span className="proofread-switch-thumb" />
+                  {showReflectionOrb ? (
+                    <span className="reflection-invite" aria-hidden="true">
+                      <span className="reflection-orb">
+                        <span className="reflection-orb-aura" />
+                        <span className="reflection-orb-aura is-late" />
+                        <span className="reflection-orb-core" />
                       </span>
-                    </div>
+                      <span className="reflection-invite-label">Reflect</span>
+                    </span>
                   ) : null}
-                  <button type="button" className="btn-primary btn-icon-only" tabIndex={-1} disabled>
-                    <svg className="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M8 3v9.2m0 0L4.3 8.5M8 12.2 11.7 8.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
+                  <div className="nugget-composer-actions">
+                    {SHOW_PROOFREAD ? (
+                      <div className="proofread-toggle">
+                        <span className="proofread-toggle-label">Proofread</span>
+                        <span className="proofread-switch">
+                          <span className="proofread-switch-thumb" />
+                        </span>
+                      </div>
+                    ) : null}
+                    <button type="button" className="btn-primary btn-icon-only" tabIndex={-1} disabled>
+                      <svg className="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M8 3v9.2m0 0L4.3 8.5M8 12.2 11.7 8.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
               <div ref={composerBarDockRef} className="nugget-composer-bar-dock">
-                <div className={`nugget-composer-bar${SHOW_PROOFREAD ? ' has-proofread' : ''}`}>
-                  {SHOW_PROOFREAD ? (
+                <div
+                  className={`nugget-composer-bar${SHOW_PROOFREAD ? ' has-proofread' : ''}${showReflectionOrb ? ' has-orb' : ''}`}
+                >
+                  {showReflectionOrb ? (
                     <button
                       type="button"
-                      role="switch"
-                      className="proofread-toggle"
-                      aria-checked={proofread}
-                      onClick={() => setProofread((current) => !current)}
+                      className="reflection-invite"
+                      onClick={openReflection}
+                      aria-label="Reflect on this thought"
                     >
-                      <span className="proofread-toggle-label">Proofread</span>
-                      <span className="proofread-switch" aria-hidden="true">
-                        <span className="proofread-switch-thumb" />
+                      <span className="reflection-orb" aria-hidden="true">
+                        <span className="reflection-orb-aura" />
+                        <span className="reflection-orb-aura is-late" />
+                        <span className="reflection-orb-core" />
                       </span>
+                      <span className="reflection-invite-label">Reflect</span>
                     </button>
                   ) : null}
-                  <button
-                    type="submit"
-                    className="btn-primary btn-icon-only"
-                    disabled={!canDrop}
-                    aria-label="Save thought"
-                  >
-                    <svg className="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
-                      <path
-                        d="M8 3v9.2m0 0L4.3 8.5M8 12.2 11.7 8.5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.7"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
+                  <div className="nugget-composer-actions">
+                    {SHOW_PROOFREAD ? (
+                      <button
+                        type="button"
+                        role="switch"
+                        className="proofread-toggle"
+                        aria-checked={proofread}
+                        onClick={() => setProofread((current) => !current)}
+                      >
+                        <span className="proofread-toggle-label">Proofread</span>
+                        <span className="proofread-switch" aria-hidden="true">
+                          <span className="proofread-switch-thumb" />
+                        </span>
+                      </button>
+                    ) : null}
+                    <button
+                      type="submit"
+                      className="btn-primary btn-icon-only"
+                      disabled={!canDrop}
+                      aria-label="Save thought"
+                    >
+                      <svg className="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M8 3v9.2m0 0L4.3 8.5M8 12.2 11.7 8.5"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.7"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </form>
@@ -1276,54 +1721,92 @@ export default function JournalHome() {
                           </div>
                         ) : null}
                       </div>
-                      {!voiceReplyOpen && viewedVoiceTurn && !voiceLoading ? (
+                      <div className="draft-voice-head-actions">
+                        {showVoiceReplyTrigger ? (
+                          <button
+                            type="button"
+                            className="draft-voice-reply-trigger"
+                            onClick={openVoiceReply}
+                            aria-label="Reply"
+                            title="Reply"
+                          >
+                            <svg className="draft-voice-reply-icon" viewBox="0 0 16 16" aria-hidden="true">
+                              <path
+                                d="M3.2 3.4h6.6c.9 0 1.6.7 1.6 1.6v3.2c0 .9-.7 1.6-1.6 1.6H7.1L5.2 11.5V9.8H3.2c-.9 0-1.6-.7-1.6-1.6V5c0-.9.7-1.6 1.6-1.6Z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.35"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M9.4 6.8h3.4c.7 0 1.3.6 1.3 1.3v2.4c0 .7-.6 1.3-1.3 1.3h-1.2v1.3L9.8 11.8H9.4c-.7 0-1.3-.6-1.3-1.3"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.35"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        ) : null}
                         <button
                           type="button"
-                          className="draft-voice-reply-trigger"
-                          onClick={openVoiceReply}
-                          aria-label="Talk with the reflection"
-                          title="Talk with the reflection"
+                          className="draft-voice-dismiss"
+                          onClick={closeVoicePanel}
+                          aria-label="Hide reflection"
+                          title="Hide reflection"
                         >
-                          <svg className="draft-voice-reply-icon" viewBox="0 0 16 16" aria-hidden="true">
+                          <svg className="draft-voice-dismiss-icon" viewBox="0 0 16 16" aria-hidden="true">
                             <path
-                              d="M3.2 3.4h6.6c.9 0 1.6.7 1.6 1.6v3.2c0 .9-.7 1.6-1.6 1.6H7.1L5.2 11.5V9.8H3.2c-.9 0-1.6-.7-1.6-1.6V5c0-.9.7-1.6 1.6-1.6Z"
+                              d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"
                               fill="none"
                               stroke="currentColor"
-                              strokeWidth="1.35"
-                              strokeLinejoin="round"
-                            />
-                            <path
-                              d="M9.4 6.8h3.4c.7 0 1.3.6 1.3 1.3v2.4c0 .7-.6 1.3-1.3 1.3h-1.2v1.3L9.8 11.8H9.4c-.7 0-1.3-.6-1.3-1.3"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.35"
-                              strokeLinejoin="round"
+                              strokeWidth="1.55"
+                              strokeLinecap="round"
                             />
                           </svg>
                         </button>
+                      </div>
+                    </div>
+
+                    <div className="draft-voice-body">
+                      {viewedVoiceTurn ? (
+                        <div
+                          className={`draft-voice-turn${viewedVoiceTurn.reflection ? ' is-complete' : ' is-pending'}`}
+                          key={viewedVoiceTurn.id}
+                        >
+                          {viewedVoiceTurn.comment ? (
+                            <p className="draft-voice-comment">{viewedVoiceTurn.comment}</p>
+                          ) : null}
+                          {viewedVoiceTurn.reflection ? (
+                            <p
+                              className="draft-voice-text"
+                              key={`${viewedVoiceTurn.id}-reflection`}
+                            >
+                              <ReflectionCopy reflection={viewedVoiceTurn.reflection} />
+                            </p>
+                          ) : voiceLoading ? (
+                            <FormingReflection />
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {showInitialForming ? <FormingReflection /> : null}
+
+                      {voiceError && !voiceLoading ? (
+                        <div className="draft-voice-error">
+                          <p className="draft-voice-text is-error">{voiceError}</p>
+                          <button
+                            type="button"
+                            className="draft-voice-retry"
+                            onClick={retryVoiceReflection}
+                          >
+                            Try again
+                          </button>
+                        </div>
                       ) : null}
                     </div>
 
-                    {viewedVoiceTurn ? (
-                      <div className="draft-voice-turn is-current" key={viewedVoiceTurn.id}>
-                        {viewedVoiceTurn.comment ? (
-                          <p className="draft-voice-comment">{viewedVoiceTurn.comment}</p>
-                        ) : null}
-                        <p className="draft-voice-text">
-                          <ReflectionCopy reflection={viewedVoiceTurn.reflection} />
-                        </p>
-                      </div>
-                    ) : null}
-
-                    {voiceLoading ? (
-                      <p className="draft-voice-text is-forming">Listening…</p>
-                    ) : null}
-
-                    {voiceError && !voiceLoading ? (
-                      <p className="draft-voice-text is-error">{voiceError}</p>
-                    ) : null}
-
-                    {voiceReplyOpen && isViewingLatestVoice && !voiceLoading ? (
+                    {showVoiceComposer ? (
                       <div className="draft-voice-reply">
                         <div className="draft-voice-reply-field">
                           <textarea
@@ -1334,7 +1817,11 @@ export default function JournalHome() {
                             onKeyDown={(event) => {
                               if (event.key === 'Escape') {
                                 event.preventDefault()
-                                closeVoiceReply()
+                                if (voiceReply.trim()) {
+                                  setVoiceReply('')
+                                  return
+                                }
+                                setVoiceReplyOpen(false)
                                 return
                               }
                               if (event.key === 'Enter' && !event.shiftKey) {
@@ -1342,46 +1829,28 @@ export default function JournalHome() {
                                 void sendVoiceReply()
                               }
                             }}
-                            placeholder="Talk with the reflection…"
                             rows={1}
-                            aria-label="Talk with the reflection"
+                            disabled={voiceLoading}
+                            aria-label="Reply"
                           />
-                          {voiceReply.trim() ? (
-                            <button
-                              type="button"
-                              className="draft-voice-reply-submit"
-                              onClick={() => void sendVoiceReply()}
-                              aria-label="Continue"
-                            >
-                              <svg className="draft-voice-reply-submit-icon" viewBox="0 0 16 16" aria-hidden="true">
-                                <path
-                                  d="M6.2 3.8 11 8 6.2 12.2"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.45"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              className="draft-voice-reply-submit is-dismiss"
-                              onClick={closeVoiceReply}
-                              aria-label="Close"
-                            >
-                              <svg className="draft-voice-reply-submit-icon" viewBox="0 0 16 16" aria-hidden="true">
-                                <path
-                                  d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="1.7"
-                                  strokeLinecap="round"
-                                />
-                              </svg>
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            className="draft-voice-reply-submit"
+                            onClick={() => void sendVoiceReply()}
+                            disabled={!voiceReply.trim() || voiceLoading}
+                            aria-label="Send"
+                          >
+                            <svg className="draft-voice-reply-submit-icon" viewBox="0 0 16 16" aria-hidden="true">
+                              <path
+                                d="M6.2 3.8 11 8 6.2 12.2"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.45"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
                         </div>
                       </div>
                     ) : null}
@@ -1456,6 +1925,9 @@ export default function JournalHome() {
                               inputRef.current?.focus({ preventScroll: true })
                             }}
                             onSaveEdit={(text) => saveNugget(nugget.id, text)}
+                            onDiscussionChange={(discussion) =>
+                              saveNuggetDiscussion(nugget.id, discussion)
+                            }
                             onRemove={() => removeNugget(nugget.id)}
                           />
                         ))}
