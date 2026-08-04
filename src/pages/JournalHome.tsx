@@ -1722,32 +1722,6 @@ export default function JournalHome() {
                         ) : null}
                       </div>
                       <div className="draft-voice-head-actions">
-                        {showVoiceReplyTrigger ? (
-                          <button
-                            type="button"
-                            className="draft-voice-reply-trigger"
-                            onClick={openVoiceReply}
-                            aria-label="Reply"
-                            title="Reply"
-                          >
-                            <svg className="draft-voice-reply-icon" viewBox="0 0 16 16" aria-hidden="true">
-                              <path
-                                d="M3.2 3.4h6.6c.9 0 1.6.7 1.6 1.6v3.2c0 .9-.7 1.6-1.6 1.6H7.1L5.2 11.5V9.8H3.2c-.9 0-1.6-.7-1.6-1.6V5c0-.9.7-1.6 1.6-1.6Z"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.35"
-                                strokeLinejoin="round"
-                              />
-                              <path
-                                d="M9.4 6.8h3.4c.7 0 1.3.6 1.3 1.3v2.4c0 .7-.6 1.3-1.3 1.3h-1.2v1.3L9.8 11.8H9.4c-.7 0-1.3-.6-1.3-1.3"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.35"
-                                strokeLinejoin="round"
-                              />
-                            </svg>
-                          </button>
-                        ) : null}
                         <button
                           type="button"
                           className="draft-voice-dismiss"
@@ -1803,6 +1777,17 @@ export default function JournalHome() {
                             Try again
                           </button>
                         </div>
+                      ) : null}
+
+                      {showVoiceReplyTrigger ? (
+                        <button
+                          type="button"
+                          className="draft-voice-reply-trigger"
+                          onClick={openVoiceReply}
+                          aria-label="Reply"
+                        >
+                          <span className="draft-voice-reply-caret" aria-hidden="true" />
+                        </button>
                       ) : null}
                     </div>
 

@@ -1101,43 +1101,58 @@ button.reflection-orb {
 }
 
 .draft-voice-reply-trigger {
-  display: inline-flex;
+  position: relative;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 1.85rem;
-  height: 1.85rem;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--teal);
-  cursor: pointer;
+  width: 100%;
+  min-height: 2.6rem;
+  margin: 0.15rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(18, 24, 31, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.28);
+  cursor: text;
   opacity: 0;
   transition:
-    background 0.2s ease,
-    color 0.2s ease,
-    opacity 0.35s var(--voice-ease) 0.36s,
-    transform 0.2s var(--voice-ease);
+    border-color 0.25s ease,
+    background 0.25s ease,
+    opacity 0.4s var(--voice-ease) 0.4s;
 }
 
 .draft-voice-slot.is-open .draft-voice-reply-trigger {
-  opacity: 0.78;
+  opacity: 1;
+}
+
+.draft-voice-reply-caret {
+  display: block;
+  width: 1.5px;
+  height: 1.05rem;
+  border-radius: 1px;
+  background: rgba(11, 122, 108, 0.45);
+  animation: draft-voice-caret 1.15s steps(1, end) infinite;
 }
 
 .draft-voice-reply-trigger:hover,
 .draft-voice-reply-trigger:focus-visible {
   outline: none;
-  background: rgba(29, 184, 154, 0.12);
-  color: var(--teal);
-  opacity: 1;
-  transform: scale(1.04);
+  border-color: rgba(11, 122, 108, 0.22);
+  background: rgba(255, 255, 255, 0.48);
 }
 
-.draft-voice-reply-icon {
-  width: 1.05rem;
-  height: 1.05rem;
-  display: block;
+.draft-voice-reply-trigger:hover .draft-voice-reply-caret,
+.draft-voice-reply-trigger:focus-visible .draft-voice-reply-caret {
+  background: rgba(11, 122, 108, 0.7);
+}
+
+@keyframes draft-voice-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .draft-voice-dismiss {
@@ -1398,6 +1413,11 @@ button.reflection-orb {
   .draft-voice-text,
   .forming-reflection {
     animation: none;
+  }
+
+  .draft-voice-reply-caret {
+    animation: none;
+    opacity: 0.7;
   }
 }
 
