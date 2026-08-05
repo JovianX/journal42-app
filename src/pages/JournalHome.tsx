@@ -1229,23 +1229,6 @@ export default function JournalHome() {
     voiceReplyRef.current?.focus({ preventScroll: true })
   }, [voicePanelOpen, showVoiceComposer, voiceLoading, voiceReplyOpen])
 
-  function clearVoiceConversation() {
-    voiceFetchAbortRef.current?.abort()
-    voiceFetchAbortRef.current = null
-    setVoiceThread([])
-    setVoiceReplyOpen(false)
-    setVoiceReply('')
-    setVoiceLoading(false)
-    setVoiceError(null)
-    setVoiceRetryReply(null)
-    setReflectionInvite(false)
-    voiceLockedRef.current = false
-    voicePanelOpenRef.current = false
-    setVoicePanelOpen(false)
-    discussionDirtyRef.current = true
-    scheduleDraftPersist(draftRef.current, [])
-  }
-
   function closeVoicePanel() {
     voiceFetchAbortRef.current?.abort()
     voiceFetchAbortRef.current = null
