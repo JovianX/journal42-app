@@ -182,7 +182,6 @@ export async function createNugget(uid: string, nugget: Nugget) {
 export async function updateNugget(uid: string, id: string, text: string) {
   await updateDoc(nuggetRef(uid, id), {
     text,
-    discussion: deleteField(),
   })
 }
 
