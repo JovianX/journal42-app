@@ -1090,6 +1090,7 @@ a.account-menu-trigger.profile-avatar-link {
   gap: 0.85rem;
   padding: 0 var(--composer-pad-x) var(--composer-pad-bottom);
   pointer-events: auto;
+  overflow: visible;
 }
 
 .nugget-composer-bar.has-orb,
@@ -1106,21 +1107,22 @@ a.account-menu-trigger.profile-avatar-link {
 }
 
 .reflection-invite {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
-  min-height: 2.55rem;
+  justify-content: center;
+  min-height: 2.2rem;
+  min-width: 2.2rem;
   margin: 0;
-  padding: 0.2rem 0.7rem 0.2rem 0.15rem;
+  padding: 0.15rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: 8px;
   background: transparent;
-  color: rgba(11, 122, 108, 0.88);
+  color: rgba(11, 122, 108, 0.78);
   cursor: pointer;
-  animation: reflection-invite-in 0.45s var(--voice-ease) both;
+  animation: reflection-invite-in 0.5s var(--voice-ease) both;
   transition:
     color 0.22s ease,
-    background 0.22s ease,
     opacity 0.22s ease;
 }
 
@@ -1128,60 +1130,107 @@ a.account-menu-trigger.profile-avatar-link {
 .reflection-invite:focus-visible {
   outline: none;
   color: var(--teal);
-  background: rgba(29, 184, 154, 0.1);
+  background: transparent;
 }
 
 .reflection-invite-label {
+  position: absolute;
+  left: calc(100% - 0.05rem);
+  top: 50%;
+  margin: 0;
+  padding: 0;
   font-family: var(--font-display);
-  font-size: 0.92rem;
+  font-size: 0.78rem;
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   line-height: 1;
-  padding: 0 0.1rem 0 0;
-  opacity: 0.95;
-  animation: reflection-invite-label-in 0.4s var(--voice-ease) 0.06s both;
+  white-space: nowrap;
+  color: rgba(11, 122, 108, 0.72);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-4px, -50%, 0);
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s var(--voice-ease);
 }
 
 .reflection-invite:hover .reflection-invite-label,
 .reflection-invite:focus-visible .reflection-invite-label {
-  opacity: 1;
+  opacity: 0.78;
+  transform: translate3d(0, -50%, 0);
 }
 
 .reflection-invite .reflection-orb {
-  width: 1.85rem;
-  height: 1.85rem;
+  width: 1.75rem;
+  height: 1.75rem;
 }
 
 .reflection-invite .reflection-orb-core {
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.4rem;
+  height: 0.4rem;
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.3),
-    0 0 8px rgba(29, 184, 154, 0.4),
-    0 0 16px rgba(29, 184, 154, 0.18);
+    0 0 0 1px rgba(255, 255, 255, 0.28),
+    0 0 7px rgba(29, 184, 154, 0.28),
+    0 0 14px rgba(29, 184, 154, 0.12);
+  animation: reflection-invite-core 5.4s ease-in-out infinite;
 }
 
 .reflection-invite .reflection-orb::before {
-  inset: 0.28rem;
-  opacity: 0.65;
-  animation-duration: 4.8s;
+  inset: 0.32rem;
+  opacity: 0.5;
+  animation-duration: 5.6s;
 }
 
 .reflection-invite .reflection-orb-aura {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-color: rgba(29, 184, 154, 0.22);
-  box-shadow: 0 0 6px rgba(29, 184, 154, 0.1);
-  animation-duration: 3.6s;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-color: rgba(29, 184, 154, 0.16);
+  box-shadow: none;
+  animation-duration: 4.8s;
+}
+
+.reflection-invite .reflection-orb-aura.is-late {
+  display: none;
 }
 
 .reflection-invite:hover .reflection-orb-core,
 .reflection-invite:focus-visible .reflection-orb-core {
-  transform: scale(1.08);
+  transform: scale(1.06);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.4),
-    0 0 10px rgba(29, 184, 154, 0.5),
-    0 0 18px rgba(29, 184, 154, 0.22);
+    0 0 0 1px rgba(255, 255, 255, 0.35),
+    0 0 9px rgba(29, 184, 154, 0.38),
+    0 0 16px rgba(29, 184, 154, 0.16);
+}
+
+@keyframes reflection-invite-core {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reflection-invite,
+  .reflection-invite .reflection-orb-core,
+  .reflection-invite .reflection-orb::before,
+  .reflection-invite .reflection-orb-aura {
+    animation: none;
+  }
+
+  .reflection-invite .reflection-orb-core {
+    opacity: 0.92;
+    transform: none;
+  }
+
+  .reflection-invite:hover .reflection-invite-label,
+  .reflection-invite:focus-visible .reflection-invite-label {
+    transform: translate3d(0, -50%, 0);
+  }
 }
 
 .reflection-orb {
@@ -1354,15 +1403,6 @@ button.reflection-orb {
   to {
     opacity: 1;
     transform: translateY(0);
-  }
-}
-
-@keyframes reflection-invite-label-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 0.88;
   }
 }
 
@@ -2213,55 +2253,52 @@ button.reflection-orb {
 }
 
 .nugget-stream {
-  padding-top: 0.5rem;
+  padding-top: 0.75rem;
+  padding-bottom: 3.5rem;
   animation: journal-enter 0.9s var(--ease-out) 0.4s both;
 }
 
 .nugget-stream-head {
-  margin-bottom: 0.9rem;
+  margin-bottom: 1.25rem;
 }
 
 .nugget-stream-head h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-size: 0.68rem;
   font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--ink-soft);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(106, 117, 128, 0.72);
 }
 
 .nugget-empty {
   margin: 0;
-  padding: 1.5rem 0.2rem;
-  color: var(--muted);
-  font-size: 1rem;
+  padding: 2rem 0.15rem 1rem;
+  color: rgba(106, 117, 128, 0.72);
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
   line-height: 1.55;
+  font-style: italic;
 }
 
 .nugget-days {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 1.5rem;
 }
 
 .nugget-day.is-recent {
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.1rem;
 }
 
 .nugget-day.is-earlier-start {
-  margin-top: 1.35rem;
-  padding-top: 1.45rem;
-  border-top: 1px solid rgba(18, 24, 31, 0.08);
+  margin-top: 0.85rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid rgba(18, 24, 31, 0.06);
 }
 
 .nugget-day.is-earlier {
-  opacity: 0.72;
-  transition: opacity 0.25s ease;
-}
-
-.nugget-day.is-earlier:hover,
-.nugget-day.is-earlier:focus-within,
-.nugget-day.is-earlier:not(.is-collapsed) {
   opacity: 1;
 }
 
@@ -2269,12 +2306,12 @@ button.reflection-orb {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.35rem;
+  gap: 0.28rem;
   width: 100%;
-  margin: 0 0 0.75rem;
-  padding: 0.15rem 0.1rem 0.55rem;
+  margin: 0 0 0.85rem;
+  padding: 0.1rem 0.05rem 0.4rem;
   border: 0;
-  border-bottom: 1px solid rgba(18, 24, 31, 0.08);
+  border-bottom: 1px solid transparent;
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -2285,13 +2322,13 @@ button.reflection-orb {
 }
 
 .nugget-day.is-recent:not(.is-collapsed) .nugget-day-toggle {
-  margin-bottom: 0.9rem;
-  padding: 0.05rem 0.1rem 0.35rem;
-  border-bottom-color: transparent;
+  margin-bottom: 1rem;
+  padding-bottom: 0.15rem;
 }
 
 .nugget-day.is-today:not(.is-collapsed) .nugget-day-toggle {
   cursor: default;
+  margin-bottom: 0.85rem;
 }
 
 .nugget-day.is-today:not(.is-collapsed) .nugget-day-toggle:hover {
@@ -2299,18 +2336,18 @@ button.reflection-orb {
 }
 
 .nugget-day-toggle:hover {
-  border-bottom-color: rgba(18, 24, 31, 0.16);
+  border-bottom-color: rgba(18, 24, 31, 0.08);
 }
 
 .nugget-day-toggle:focus-visible {
-  outline: 2px solid rgba(29, 184, 154, 0.45);
+  outline: 2px solid rgba(29, 184, 154, 0.4);
   outline-offset: 3px;
   border-radius: 4px;
 }
 
 .nugget-day-toggle-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
   width: 100%;
@@ -2319,16 +2356,16 @@ button.reflection-orb {
 .nugget-day-toggle-main {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.35rem;
   min-width: 0;
 }
 
 .nugget-day-chevron {
-  width: 0.85rem;
-  height: 0.85rem;
+  width: 0.72rem;
+  height: 0.72rem;
   flex-shrink: 0;
-  color: var(--muted);
-  transition: transform 0.22s var(--ease-out), color 0.2s ease;
+  color: rgba(106, 117, 128, 0.4);
+  transition: transform 0.22s var(--ease-out), color 0.2s ease, opacity 0.2s ease;
 }
 
 .nugget-day-chevron.is-expanded {
@@ -2336,12 +2373,12 @@ button.reflection-orb {
 }
 
 .nugget-day-toggle:hover .nugget-day-chevron {
-  color: var(--ink-soft);
+  color: rgba(106, 117, 128, 0.7);
 }
 
 .nugget-day-label {
   font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-size: 0.98rem;
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink-soft);
@@ -2349,38 +2386,87 @@ button.reflection-orb {
 
 .nugget-day.is-recent .nugget-day-label {
   color: var(--ink);
-  font-size: 1rem;
+  font-size: 1.02rem;
 }
 
 .nugget-day-count {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  text-transform: none;
+  color: rgba(106, 117, 128, 0.55);
   flex-shrink: 0;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+
+.nugget-day.is-recent .nugget-day-count {
+  color: rgba(106, 117, 128, 0.62);
 }
 
 .nugget-day.is-collapsed .nugget-day-toggle {
   margin-bottom: 0;
-  padding-bottom: 0.45rem;
+  padding-bottom: 0.55rem;
+}
+
+.nugget-day.is-earlier.is-collapsed .nugget-day-toggle {
+  gap: 0.22rem;
+  padding: 0.2rem 0.05rem 0.55rem;
+  border-bottom-color: transparent;
+}
+
+.nugget-day.is-earlier.is-collapsed .nugget-day-toggle:hover {
+  border-bottom-color: transparent;
+}
+
+.nugget-day.is-earlier.is-collapsed .nugget-day-label {
+  font-size: 0.9rem;
+  font-weight: 550;
+  color: rgba(58, 69, 80, 0.88);
+}
+
+.nugget-day.is-earlier.is-collapsed .nugget-day-chevron {
+  opacity: 0.35;
+  width: 0.65rem;
+  height: 0.65rem;
+}
+
+.nugget-day.is-earlier.is-collapsed:hover .nugget-day-chevron,
+.nugget-day.is-earlier.is-collapsed:focus-within .nugget-day-chevron {
+  opacity: 0.55;
+}
+
+.nugget-day.is-earlier.is-collapsed .nugget-day-count {
+  opacity: 0;
+}
+
+.nugget-day.is-earlier.is-collapsed:hover .nugget-day-count,
+.nugget-day.is-earlier.is-collapsed:focus-within .nugget-day-count {
+  opacity: 1;
 }
 
 .nugget-day-preview {
   display: block;
   max-width: 100%;
-  padding: 0 0 0 1.3rem;
-  color: var(--muted);
+  padding: 0 0 0 1.05rem;
+  color: rgba(106, 117, 128, 0.72);
+  font-family: var(--font-serif);
   font-size: 0.92rem;
   line-height: 1.45;
   font-weight: 400;
+  font-style: italic;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.nugget-day.is-earlier.is-collapsed .nugget-day-preview {
+  padding-left: 1rem;
+  color: rgba(106, 117, 128, 0.68);
+}
+
 .nugget-day.is-recent.is-collapsed .nugget-day-preview {
-  padding-left: 1.3rem;
+  padding-left: 1.05rem;
 }
 
 .nugget-list {
@@ -2389,7 +2475,11 @@ button.reflection-orb {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 1.15rem;
+}
+
+.nugget-day.is-earlier .nugget-list {
+  gap: 0.95rem;
 }
 
 .thought-saved {
@@ -2408,36 +2498,37 @@ button.reflection-orb {
 .thought-stack {
   --composer-pad-x: 1.15rem;
   --composer-pad-top: 1.05rem;
-  --composer-pad-bottom: 0.9rem;
-  --composer-gap: 0.85rem;
+  --composer-pad-bottom: 0.95rem;
+  --composer-gap: 0.7rem;
+}
+
+.nugget-day.is-earlier .thought-stack {
+  --composer-pad-x: 1.05rem;
+  --composer-pad-top: 0.9rem;
+  --composer-pad-bottom: 0.8rem;
+  --composer-gap: 0.55rem;
 }
 
 .thought-frame {
   position: relative;
-  overflow: hidden;
-  border-radius: 18px;
+  overflow: visible;
+  border-radius: 16px;
 }
 
 .thought-stack.has-voice .thought-frame {
-  border-radius: 18px 18px 0 0;
+  border-radius: 16px 16px 0 0;
 }
 
 .thought-face {
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(18, 24, 31, 0.07);
-  border-radius: 18px;
-  background:
-    linear-gradient(
-      165deg,
-      rgba(255, 255, 255, 0.78) 0%,
-      rgba(248, 250, 249, 0.68) 48%,
-      rgba(255, 255, 255, 0.62) 100%
-    );
-  backdrop-filter: blur(12px) saturate(1.08);
+  border: 1px solid rgba(18, 24, 31, 0.045);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.64);
+  backdrop-filter: blur(10px) saturate(1.04);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.72) inset,
-    0 10px 28px rgba(18, 24, 31, 0.045);
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 8px 22px rgba(18, 24, 31, 0.03);
   pointer-events: none;
   z-index: 0;
   transition:
@@ -2447,20 +2538,27 @@ button.reflection-orb {
 }
 
 .thought-stack.has-voice .thought-face {
-  border-radius: 18px 18px 0 0;
+  border-radius: 16px 16px 0 0;
   border-bottom-color: transparent;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.65) inset;
+}
+
+.nugget-day.is-earlier .thought-face {
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55) inset,
+    0 6px 16px rgba(18, 24, 31, 0.025);
 }
 
 .thought-saved.has-reflection .thought-face {
-  border-color: rgba(11, 122, 108, 0.14);
+  border-color: rgba(18, 24, 31, 0.045);
 }
 
 .thought-saved.is-fresh .thought-face {
-  border-color: rgba(29, 184, 154, 0.34);
+  border-color: rgba(29, 184, 154, 0.28);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.78) inset,
-    0 14px 32px rgba(18, 24, 31, 0.07);
+    0 14px 32px rgba(18, 24, 31, 0.06);
   animation: nugget-drop 0.75s var(--ease-out) both;
 }
 
@@ -2477,19 +2575,29 @@ button.reflection-orb {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  min-height: 1.25rem;
+  min-height: 1.1rem;
+  padding-right: 2rem;
 }
 
 .thought-text {
   margin: 0;
   color: var(--ink);
-  font-family: var(--font-display);
-  font-size: clamp(1.08rem, 2.2vw, 1.28rem);
-  font-weight: 500;
-  line-height: 1.55;
-  letter-spacing: -0.015em;
+  font-family: var(--font-serif);
+  font-size: clamp(1.08rem, 2.2vw, 1.26rem);
+  font-weight: 450;
+  line-height: 1.58;
+  letter-spacing: -0.012em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.nugget-day.is-earlier .thought-text {
+  font-size: clamp(1.02rem, 2vw, 1.14rem);
+  line-height: 1.55;
+}
+
+.thought-saved .draft-voice {
+  border-radius: 0 0 16px 16px;
 }
 
 .thought-edit-input {
@@ -2501,54 +2609,90 @@ button.reflection-orb {
   border: none;
   outline: none;
   background: transparent;
-  color: var(--ink);
-  font: inherit;
-  font-size: clamp(1.08rem, 2.2vw, 1.28rem);
-  font-weight: 500;
-  line-height: 1.55;
-  letter-spacing: -0.015em;
   caret-color: var(--teal);
 }
 
 .thought-bar {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 0.75rem;
-  min-height: 2.2rem;
+  min-height: 2rem;
+  overflow: visible;
 }
 
 .thought-bar.has-actions {
   justify-content: space-between;
 }
 
-.thought-continue {
-  margin: 0;
-  padding: 0.35rem 0.15rem;
-  border: 0;
-  background: transparent;
-  color: var(--teal);
-  font-family: var(--font-display);
-  font-size: 0.86rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-  cursor: pointer;
-  opacity: 0.88;
-  transition:
-    color 0.18s ease,
-    opacity 0.18s ease;
+.thought-bar.is-editing {
+  justify-content: flex-end;
+  min-height: 1.75rem;
 }
 
-.thought-continue:hover,
-.thought-continue:focus-visible {
+.thought-edit-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.thought-edit-cancel,
+.thought-edit-save {
+  margin: 0;
+  padding: 0.2rem 0.1rem;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.18s ease, opacity 0.18s ease;
+}
+
+.thought-edit-cancel {
+  color: rgba(106, 117, 128, 0.72);
+}
+
+.thought-edit-cancel:hover,
+.thought-edit-cancel:focus-visible {
   outline: none;
-  color: var(--teal-deep, #0b7a6c);
-  opacity: 1;
+  color: var(--ink-soft);
+}
+
+.thought-edit-save {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.thought-edit-save:hover:not(:disabled),
+.thought-edit-save:focus-visible:not(:disabled) {
+  outline: none;
+  color: #0a0e12;
+}
+
+.thought-edit-save:disabled {
+  opacity: 0.34;
+  cursor: not-allowed;
+}
+
+.thought-saved.is-editing .thought-face {
+  border-color: rgba(11, 122, 108, 0.18);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 0 0 3px rgba(29, 184, 154, 0.05),
+    0 14px 32px rgba(18, 24, 31, 0.05);
+}
+
+.thought-saved.is-editing .nugget-time {
+  color: rgba(11, 122, 108, 0.55);
 }
 
 .thought-saved .nugget-more {
-  top: 0.75rem;
-  right: 0.75rem;
+  top: 0.7rem;
+  right: 0.7rem;
 }
 
 .thought-saved .nugget-more-trigger {
@@ -2558,16 +2702,7 @@ button.reflection-orb {
 .thought-saved:hover .nugget-more-trigger,
 .thought-saved:focus-within .nugget-more-trigger,
 .thought-saved .nugget-more.is-open .nugget-more-trigger {
-  opacity: 1;
-}
-
-.thought-saved .draft-voice {
-  border-radius: 0 0 18px 18px;
-}
-
-.thought-saved .reflection-invite {
-  min-height: 2.2rem;
-  padding: 0.1rem 0.55rem 0.1rem 0.1rem;
+  opacity: 0.72;
 }
 
 .nugget {
@@ -2610,10 +2745,11 @@ button.reflection-orb {
 }
 
 .nugget-time {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  color: var(--muted);
-  letter-spacing: 0.02em;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: rgba(106, 117, 128, 0.72);
+  letter-spacing: -0.01em;
 }
 
 .nugget-reflect-chip {

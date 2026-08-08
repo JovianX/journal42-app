@@ -821,7 +821,9 @@ function NuggetItem({
   function saveEdit() {
     const text = editText.trim()
     if (!text) return
-    onSaveEdit(text)
+    if (text !== nugget.text.trim()) {
+      onSaveEdit(text)
+    }
     setIsEditing(false)
   }
 
@@ -836,7 +838,7 @@ function NuggetItem({
       cancelEdit()
       return
     }
-    if (event.key === 'Enter' && event.shiftKey) {
+    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault()
       saveEdit()
     }
@@ -853,16 +855,6 @@ function NuggetItem({
           <div className="thought-body">
             <div className="thought-meta">
               <span className="nugget-time">{formatTime(nugget.createdAt)}</span>
-              {hasStoredReflection ? (
-                <button
-                  type="button"
-                  className="nugget-reflect-chip has-reflection"
-                  onClick={() => openReflection()}
-                  aria-label="Show reflection"
-                >
-                  reflected
-                </button>
-              ) : null}
             </div>
 
             {isEditing ? (
@@ -879,54 +871,48 @@ function NuggetItem({
               <p className="thought-text">{nugget.text}</p>
             )}
 
-            <div
-              className={`thought-bar${showReflectInvite || showContinueInvite || isEditing ? ' has-actions' : ''}`}
-            >
-              {isEditing ? (
-                <>
-                  <span className="nugget-shortcut">Shift+Enter to save · Esc to cancel</span>
-                  <div className="nugget-edit-buttons">
-                    <button type="button" className="btn-ghost btn-compact" onClick={cancelEdit}>
+            {isEditing || showReflectInvite || showContinueInvite ? (
+              <div className={`thought-bar${isEditing ? ' is-editing' : ' has-actions'}`}>
+                {isEditing ? (
+                  <div className="thought-edit-actions">
+                    <button type="button" className="thought-edit-cancel" onClick={cancelEdit}>
                       Cancel
                     </button>
                     <button
                       type="button"
-                      className="btn-primary btn-compact"
+                      className="thought-edit-save"
                       onClick={saveEdit}
                       disabled={!editText.trim()}
                     >
                       Save
                     </button>
                   </div>
-                </>
-              ) : showReflectInvite ? (
-                <button
-                  type="button"
-                  className="reflection-invite"
-                  onClick={() => openReflection()}
-                  aria-label="Reflect on this thought"
-                >
-                  <span className="reflection-orb" aria-hidden="true">
-                    <span className="reflection-orb-aura" />
-                    <span className="reflection-orb-aura is-late" />
-                    <span className="reflection-orb-core" />
-                  </span>
-                  <span className="reflection-invite-label">Reflect</span>
-                </button>
-              ) : showContinueInvite ? (
-                <button
-                  type="button"
-                  className="thought-continue"
-                  onClick={() => openReflection({ continueReply: true })}
-                >
-                  Continue reflection
-                </button>
-              ) : (
-                <span />
-              )}
-            </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="reflection-invite"
+                    onClick={() =>
+                      openReflection(showContinueInvite ? { continueReply: true } : undefined)
+                    }
+                    aria-label={
+                      showContinueInvite ? 'Continue reflection' : 'Reflect on this thought'
+                    }
+                  >
+                    <span className="reflection-orb" aria-hidden="true">
+                      <span className="reflection-orb-aura" />
+                      <span className="reflection-orb-aura is-late" />
+                      <span className="reflection-orb-core" />
+                    </span>
+                    <span className="reflection-invite-label">
+                      {showContinueInvite ? 'Continue' : 'Reflect'}
+                    </span>
+                  </button>
+                )}
+              </div>
+            ) : null}
           </div>
 
+          {isEditing ? null : (
           <div className={`nugget-more${menuOpen ? ' is-open' : ''}`} ref={menuRef}>
             <button
               type="button"
@@ -1011,6 +997,7 @@ function NuggetItem({
               </div>
             ) : null}
           </div>
+          )}
         </div>
 
         <ReflectionPanel
@@ -1891,13 +1878,14 @@ export default function JournalHome() {
           ref={streamRef}
           className="nugget-stream"
           aria-labelledby={listLabelId}
-        >          <div className="nugget-stream-head">
+        >
+          <div className="nugget-stream-head">
             <h2 id={listLabelId}>Thoughts</h2>
           </div>
 
           {nuggets.length === 0 ? (
             <p className="nugget-empty">
-              Nothing here yet. Write the first thought and feel the space open up.
+              Your saved thoughts will gather here.
             </p>
           ) : (
             <div className="nugget-days">
@@ -1932,10 +1920,12 @@ export default function JournalHome() {
                           )}
                           <span className="nugget-day-label">{group.label}</span>
                         </span>
-                        <span className="nugget-day-count">
-                          {group.nuggets.length}{' '}
-                          {group.nuggets.length === 1 ? 'thought' : 'thoughts'}
-                        </span>
+                        {group.isToday && !collapsed ? null : (
+                          <span className="nugget-day-count">
+                            {group.nuggets.length}{' '}
+                            {group.nuggets.length === 1 ? 'thought' : 'thoughts'}
+                          </span>
+                        )}
                       </span>
                       {collapsed && latest ? (
                         <span className="nugget-day-preview">
