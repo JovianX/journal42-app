@@ -24,6 +24,14 @@ service cloud.firestore {
     //   - comment: string (optional) - user reply that steered this turn
     //   - reflection: map (optional) with text + optional historyCite
     //
+    // Collection: users/{uid}/billing/current
+    // Fields (Admin SDK only):
+    //   - plan: 'clear-head' | 'pattern' | 'forever'
+    //   - status: 'active' | 'past_due' | 'cancelled' | 'expired' | 'none'
+    //   - lemonSubscriptionId, lemonCustomerId, lemonVariantId (optional)
+    //   - renewsAt, endsAt, portalUrl (optional)
+    //   - updatedAt: number
+    //
     // ===============================================================
 
     function isAuthenticated() {
@@ -69,6 +77,12 @@ service cloud.firestore {
           && isValidNugget(request.resource.data)
           && request.resource.data.createdAt == resource.data.createdAt;
         allow delete: if isOwner(uid);
+      }
+
+      // Written only by journal42-api (Admin SDK). Clients may read their plan.
+      match /billing/{docId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
       }
     }
   }

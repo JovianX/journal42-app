@@ -55,31 +55,44 @@ function friendlyAuthError(error: unknown): string {
       return 'Too many attempts. Wait a moment and try again.'
     case 'auth/unauthorized-domain':
       return 'This domain is not authorized for sign-in. Add it in the Firebase console.'
+    case 'auth/unauthorized-continue-uri':
+    case 'auth/invalid-continue-uri':
+      return 'Password reset is misconfigured for this domain. Try again from localhost or the production app URL.'
     case 'auth/operation-not-allowed':
       return 'This sign-in method is not enabled yet. Check Firebase Authentication settings.'
     case 'auth/network-request-failed':
       return 'Network error. Check your connection and try again.'
     case 'auth/invalid-api-key':
       return 'Firebase API key is invalid. Check app/.env and restart the dev server.'
+    case 'auth/missing-email':
+      return 'Enter the email for your account.'
     default:
       return 'Could not sign in. Try again in a moment.'
   }
 }
 
-type AuthMode = 'signin' | 'signup'
+type AuthMode = 'signin' | 'signup' | 'reset'
 
 export default function Login() {
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth()
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, sendPasswordReset } = useAuth()
   const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [pending, setPending] = useState<'google' | 'email' | null>(null)
+  const [pending, setPending] = useState<'google' | 'email' | 'reset' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  function switchMode(next: AuthMode) {
+    setMode(next)
+    setError(null)
+    setNotice(null)
+  }
 
   async function onGoogle() {
     if (pending) return
     setPending('google')
     setError(null)
+    setNotice(null)
 
     try {
       await signInWithGoogle()
@@ -94,13 +107,40 @@ export default function Login() {
     if (pending) return
 
     const nextEmail = email.trim()
-    if (!nextEmail || !password) {
+    if (!nextEmail) {
+      setError('Enter an email address.')
+      return
+    }
+
+    if (mode === 'reset') {
+      setPending('reset')
+      setError(null)
+      setNotice(null)
+      try {
+        await sendPasswordReset(nextEmail)
+        setNotice(
+          'If an account exists for that email, a reset link is on its way. Check your inbox (and spam).',
+        )
+      } catch (resetError) {
+        setError(
+          resetError instanceof Error
+            ? resetError.message
+            : friendlyAuthError(resetError),
+        )
+      } finally {
+        setPending(null)
+      }
+      return
+    }
+
+    if (!password) {
       setError('Enter an email and password.')
       return
     }
 
     setPending('email')
     setError(null)
+    setNotice(null)
 
     try {
       if (mode === 'signup') {
@@ -116,6 +156,18 @@ export default function Login() {
 
   const busy = pending !== null
   const authReady = isFirebaseConfigured
+  const title =
+    mode === 'signup'
+      ? 'Create your account'
+      : mode === 'reset'
+        ? 'Reset your password'
+        : 'Start journaling'
+  const lead =
+    mode === 'signup'
+      ? 'Pick an email and password. Your thoughts stay private.'
+      : mode === 'reset'
+        ? 'Enter your email and we will send a reset link.'
+        : 'Log in with Google or email. Your thoughts stay private.'
 
   return (
     <div className="auth-page">
@@ -129,12 +181,8 @@ export default function Login() {
         <p className="auth-brand">
           Journal<span>42</span>
         </p>
-        <h1>{mode === 'signup' ? 'Create your account' : 'Start journaling'}</h1>
-        <p className="auth-lead">
-          {mode === 'signup'
-            ? 'Pick an email and password. Your thoughts stay private.'
-            : 'Log in with Google or email. Your thoughts stay private.'}
-        </p>
+        <h1>{title}</h1>
+        <p className="auth-lead">{lead}</p>
 
         {!authReady ? (
           <p className="auth-notice auth-notice-error" role="status">
@@ -144,21 +192,25 @@ export default function Login() {
           </p>
         ) : null}
 
-        <div className="social-stack" role="group" aria-label="Social login">
-          <button
-            type="button"
-            className="social-btn social-btn-google"
-            onClick={onGoogle}
-            disabled={busy || !authReady}
-          >
-            <GoogleIcon />
-            {pending === 'google' ? 'Connecting…' : 'Continue with Google'}
-          </button>
-        </div>
+        {mode !== 'reset' ? (
+          <>
+            <div className="social-stack" role="group" aria-label="Social login">
+              <button
+                type="button"
+                className="social-btn social-btn-google"
+                onClick={onGoogle}
+                disabled={busy || !authReady}
+              >
+                <GoogleIcon />
+                {pending === 'google' ? 'Connecting…' : 'Continue with Google'}
+              </button>
+            </div>
 
-        <div className="auth-divider" role="separator">
-          <span>or</span>
-        </div>
+            <div className="auth-divider" role="separator">
+              <span>or</span>
+            </div>
+          </>
+        ) : null}
 
         <form className="auth-form" onSubmit={onEmailSubmit}>
           <label className="auth-field">
@@ -176,21 +228,35 @@ export default function Login() {
               required
             />
           </label>
-          <label className="auth-field">
-            <span className="auth-label">Password</span>
-            <input
-              className="auth-input"
-              type="password"
-              name="password"
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="At least 6 characters"
-              disabled={busy || !authReady}
-              required
-              minLength={6}
-            />
-          </label>
+          {mode !== 'reset' ? (
+            <label className="auth-field">
+              <span className="auth-label">Password</span>
+              <input
+                className="auth-input"
+                type="password"
+                name="password"
+                autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="At least 6 characters"
+                disabled={busy || !authReady}
+                required
+                minLength={6}
+              />
+            </label>
+          ) : null}
+          {mode === 'signin' ? (
+            <div className="auth-forgot-row">
+              <button
+                type="button"
+                className="auth-forgot-btn"
+                onClick={() => switchMode('reset')}
+                disabled={busy}
+              >
+                Forgot password?
+              </button>
+            </div>
+          ) : null}
           <button
             type="submit"
             className="btn-primary auth-submit"
@@ -200,15 +266,24 @@ export default function Login() {
               ? mode === 'signup'
                 ? 'Creating account…'
                 : 'Signing in…'
-              : mode === 'signup'
-                ? 'Create account'
-                : 'Sign in with email'}
+              : pending === 'reset'
+                ? 'Sending link…'
+                : mode === 'signup'
+                  ? 'Create account'
+                  : mode === 'reset'
+                    ? 'Send reset link'
+                    : 'Sign in with email'}
           </button>
         </form>
 
         {error ? (
           <p className="auth-notice auth-notice-error" role="alert">
             {error}
+          </p>
+        ) : null}
+        {notice ? (
+          <p className="auth-notice auth-notice-success" role="status">
+            {notice}
           </p>
         ) : null}
 
@@ -219,13 +294,22 @@ export default function Login() {
               <button
                 type="button"
                 className="auth-switch-btn"
-                onClick={() => {
-                  setMode('signin')
-                  setError(null)
-                }}
+                onClick={() => switchMode('signin')}
                 disabled={busy}
               >
                 Sign in
+              </button>
+            </>
+          ) : mode === 'reset' ? (
+            <>
+              Remembered it?{' '}
+              <button
+                type="button"
+                className="auth-switch-btn"
+                onClick={() => switchMode('signin')}
+                disabled={busy}
+              >
+                Back to sign in
               </button>
             </>
           ) : (
@@ -234,10 +318,7 @@ export default function Login() {
               <button
                 type="button"
                 className="auth-switch-btn"
-                onClick={() => {
-                  setMode('signup')
-                  setError(null)
-                }}
+                onClick={() => switchMode('signup')}
                 disabled={busy}
               >
                 Create an account

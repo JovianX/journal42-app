@@ -1,4 +1,4 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import AuthLoading from './AuthLoading'
 import { useAuth } from './useAuth'
 import { useDeferredLoading } from './useDeferredLoading'
@@ -13,6 +13,7 @@ function holdLoaderForDemo() {
 
 export default function RequireAuth() {
   const { user, loading } = useAuth()
+  const location = useLocation()
   const showLoader = useDeferredLoading(loading) || holdLoaderForDemo()
 
   // Auth still resolving: never redirect yet (avoids a login flash).
@@ -25,7 +26,7 @@ export default function RequireAuth() {
   }
 
   if (!user) {
-    return <Navigate to="/login" replace />
+    return <Navigate to={`/login${location.search}`} replace />
   }
 
   return <Outlet />

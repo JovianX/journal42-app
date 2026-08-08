@@ -4,17 +4,21 @@ import {
   type ReactNode,
 } from 'react'
 import {
+  EmailAuthProvider,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   getRedirectResult,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
   signOut as firebaseSignOut,
+  updatePassword,
   type User,
 } from 'firebase/auth'
 import { auth, isFirebaseConfigured, requireAuth } from '../lib/firebase'
+import { requestPasswordReset } from '../lib/passwordResetApi'
 import { AuthContext } from './auth-context'
 
 const REDIRECT_FALLBACK_CODES = new Set([
@@ -81,6 +85,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await createUserWithEmailAndPassword(requireAuth(), email, password)
   }
 
+  async function sendPasswordReset(email: string) {
+    await requestPasswordReset(email)
+  }
+
+  async function changePassword(currentPassword: string, nextPassword: string) {
+    const firebaseAuth = requireAuth()
+    const currentUser = firebaseAuth.currentUser
+    if (!currentUser?.email) {
+      throw new Error('You must be signed in with email to change your password.')
+    }
+
+    const credential = EmailAuthProvider.credential(
+      currentUser.email,
+      currentPassword,
+    )
+    await reauthenticateWithCredential(currentUser, credential)
+    await updatePassword(currentUser, nextPassword)
+  }
+
   async function signOut() {
     await firebaseSignOut(requireAuth())
   }
@@ -93,6 +116,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         signInWithEmail,
         signUpWithEmail,
+        sendPasswordReset,
+        changePassword,
         signOut,
       }}
     >

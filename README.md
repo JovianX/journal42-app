@@ -71,10 +71,14 @@ For GitHub Actions, set the same values as repository secrets (names match the `
 
 The AI backend lives in the sibling `journal42-api` project and should be deployed separately.
 
+Billing (Lemon Squeezy checkout, portal, webhooks) uses the same API base URL:
+
 | Mode | Default `VITE_AI_API_BASE` |
 | --- | --- |
 | `npm run dev` | `http://localhost:8787` |
 | production build | `https://unexhortative-recitable-edyth.ngrok-free.dev/journal42/api` |
+
+Entitlements live in Firestore at `users/{uid}/billing/current` (Admin SDK writes only). Paid CTAs from the marketing site open ` /login?plan=pattern|forever `, which starts checkout after sign-in.
 
 Leave `VITE_AI_API_BASE` blank to use the mode default, or set it to override.
 

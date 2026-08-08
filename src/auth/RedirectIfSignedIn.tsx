@@ -1,5 +1,6 @@
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import AuthLoading from './AuthLoading'
+import { isPaidPlan } from '../lib/billing'
 import { useAuth } from './useAuth'
 import { useDeferredLoading } from './useDeferredLoading'
 
@@ -13,6 +14,7 @@ function holdLoaderForDemo() {
 
 export default function RedirectIfSignedIn() {
   const { user, loading } = useAuth()
+  const location = useLocation()
   const showLoader = useDeferredLoading(loading) || holdLoaderForDemo()
 
   // Auth still resolving: don't paint login, then bounce away.
@@ -25,7 +27,9 @@ export default function RedirectIfSignedIn() {
   }
 
   if (user) {
-    return <Navigate to="/" replace />
+    const plan = new URLSearchParams(location.search).get('plan')
+    const to = isPaidPlan(plan) ? `/?plan=${plan}` : '/'
+    return <Navigate to={to} replace />
   }
 
   return <Outlet />
