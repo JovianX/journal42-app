@@ -124,25 +124,6 @@ function previewText(text: string, max = 72) {
   return `${cleaned.slice(0, max).trimEnd()}…`
 }
 
-function DayChevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      className={`nugget-day-chevron${expanded ? ' is-expanded' : ''}`}
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-    >
-      <path
-        d="M6 3.5 10.5 8 6 12.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
 function autosizeTextarea(el: HTMLTextAreaElement | null) {
   if (!el) return
   el.style.height = 'auto'
@@ -1914,12 +1895,7 @@ export default function JournalHome() {
                       }}
                     >
                       <span className="nugget-day-toggle-row">
-                        <span className="nugget-day-toggle-main">
-                          {group.isToday && !collapsed ? null : (
-                            <DayChevron expanded={!collapsed} />
-                          )}
-                          <span className="nugget-day-label">{group.label}</span>
-                        </span>
+                        <span className="nugget-day-label">{group.label}</span>
                         {group.isToday && !collapsed ? null : (
                           <span className="nugget-day-count">
                             {group.nuggets.length}{' '}
