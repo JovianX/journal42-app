@@ -63,6 +63,10 @@ Restart `npm run dev` after changing env vars.
 
 For GitHub Actions, set the same values as repository secrets (names match the `VITE_*` keys above).
 
+## Install (PWA)
+
+Production builds are installable (Chrome/Edge install prompt; Safari → Share → Add to Home Screen). Settings → Install surfaces the prompt when the browser offers one.
+
 ## Deploy
 
 [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml) builds on push to `main` and deploys to GitHub Pages.

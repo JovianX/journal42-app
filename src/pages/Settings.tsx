@@ -15,6 +15,7 @@ import {
   type PlanId,
 } from '../lib/billing'
 import { openBillingPortal, startCheckout } from '../lib/billingApi'
+import { useAppInstall } from '../lib/useAppInstall'
 import { userInitials, userLabel } from '../lib/userDisplay'
 
 function statusTone(status: BillingStatus, plan: PlanId) {
@@ -45,6 +46,7 @@ function statusBadgeLabel(status: BillingStatus, plan: PlanId) {
 export default function Settings() {
   const { user, signOut, changePassword, sendPasswordReset } = useAuth()
   const { billing, ready: billingReady } = useBilling(user?.uid)
+  const install = useAppInstall()
   const [photoFailed, setPhotoFailed] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [billingBusy, setBillingBusy] = useState(false)
@@ -419,6 +421,37 @@ export default function Settings() {
                 <p className="settings-plan-footnote">
                   Payment methods are managed in Lemon Squeezy.
                 </p>
+              </div>
+            </section>
+
+            <section className="settings-section" aria-labelledby="settings-install-heading">
+              <h2 className="settings-section-title" id="settings-install-heading">
+                Install
+              </h2>
+
+              <div className="settings-item settings-item-session">
+                <div className="settings-item-copy">
+                  <p className="settings-item-label">App</p>
+                  <p className="settings-item-value">
+                    {install.kind === 'installed'
+                      ? 'Installed on this device'
+                      : install.kind === 'ios-hint'
+                        ? 'On iPhone or iPad: Share → Add to Home Screen'
+                        : install.kind === 'prompt'
+                          ? 'Add Journal42 to your home screen or dock'
+                          : 'Use your browser’s install or “Add to Home Screen” option'}
+                  </p>
+                </div>
+                {install.kind === 'prompt' ? (
+                  <button
+                    type="button"
+                    className="btn-primary settings-btn settings-install-btn"
+                    onClick={() => void install.install()}
+                    disabled={install.busy || signingOut}
+                  >
+                    {install.busy ? 'Installing…' : 'Install app'}
+                  </button>
+                ) : null}
               </div>
             </section>
 

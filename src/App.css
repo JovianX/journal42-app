@@ -713,6 +713,10 @@ a.account-menu-trigger.profile-avatar-link {
   border-top: 0;
 }
 
+.settings-install-btn {
+  flex-shrink: 0;
+}
+
 .settings-signout {
   appearance: none;
   display: inline-flex;
@@ -772,6 +776,7 @@ a.account-menu-trigger.profile-avatar-link {
   }
 
   .settings-btn,
+  .settings-install-btn,
   .settings-signout {
     width: 100%;
     justify-content: center;
@@ -3389,6 +3394,29 @@ button.reflection-orb {
   color: var(--ink-soft);
   font-size: 1.05rem;
   line-height: 1.55;
+}
+
+.auth-draft-preview {
+  margin: -0.55rem 0 1.35rem;
+  padding: 0.95rem 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(11, 122, 108, 0.14);
+  background: linear-gradient(
+    160deg,
+    rgba(29, 184, 154, 0.1) 0%,
+    rgba(255, 255, 255, 0.85) 55%,
+    rgba(244, 247, 249, 0.95) 100%
+  );
+}
+
+.auth-draft-preview p {
+  margin: 0;
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .auth-loading {
