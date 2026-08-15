@@ -7,7 +7,7 @@ Items are not strict priority unless noted. Surfaces: `[app]` `[api]` `[website]
 
 - [ ] Replace ngrok AI API URL with a stable production host (custom domain + HTTPS) `[api]` `[app]`
 - [ ] Add per-user / per-IP rate limits on `/reflect` (beyond provider 429 handling) `[api]`
-- [ ] Enforce plan entitlements server-side on AI (never UI-only) `[api]`
+- [x] Enforce plan entitlements server-side on AI (never UI-only) `[api]`
 - [ ] Delete account and all data (Auth user + Firestore journal + billing cleanup) `[app]` `[api]`
 - [ ] Point marketing primary CTAs at `https://app.journal42.cloud` signup/login; retire invite-only / waitlist as the main funnel `[website]`
 - [ ] Align Privacy + Terms with Firestore, AI vendors, Lemon Squeezy billing, and retention `[website]`
@@ -20,7 +20,7 @@ Items are not strict priority unless noted. Surfaces: `[app]` `[api]` `[website]
 - [ ] Lock a thought from AI (exclude from reflection / history context; never send to the model) `[app]` `[api]`
 - [ ] First-run onboarding (why Journal42, write one thought, try reflection once) `[app]`
 - [ ] Memory and recall: search (text first; semantic later) over private history `[app]` `[api]`
-- [ ] Paid “history answers back”: richer reflection that uses past thoughts when plan allows `[app]` `[api]`
+- [x] Paid unlimited reflections and chat; free daily limits `[app]` `[api]` `[website]`
 - [ ] Product analytics funnel: signup → first nugget → upgrade `[app]` `[website]`
 - [ ] Ship or clearly mark as coming: tags, folders, mood, streaks (as marketed) `[app]` `[website]`
 - [ ] Finish or remove proofread stub (`SHOW_PROOFREAD`) `[app]`

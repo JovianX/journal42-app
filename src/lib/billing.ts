@@ -23,29 +23,36 @@ export const DEFAULT_BILLING: BillingEntitlement = {
   status: 'none',
 }
 
+/** Only public paid SKU. Forever remains a legacy entitlement. */
+export const PUBLIC_PAID_PLAN: PaidPlanId = 'pattern'
+
 export function isPaidPlan(value: unknown): value is PaidPlanId {
   return value === 'pattern' || value === 'forever'
 }
 
-export function planHasHistoryReflection(plan: PlanId) {
+export function hasUnlimitedAi(plan: PlanId) {
   return plan === 'pattern' || plan === 'forever'
+}
+
+export function canUpgradePlan(plan: PlanId) {
+  return plan === 'clear-head'
 }
 
 export function planLabel(plan: PlanId) {
   switch (plan) {
     case 'pattern':
-      return 'See The Pattern'
+      return 'Quieter, All the Way'
     case 'forever':
       return 'Know Yourself Forever'
     default:
-      return '2-Minute Clear Head'
+      return 'Quieter'
   }
 }
 
 export function planPrice(plan: PlanId) {
   switch (plan) {
     case 'pattern':
-      return '$1/mo'
+      return '$9/mo'
     case 'forever':
       return '$12/mo'
     default:
@@ -56,16 +63,16 @@ export function planPrice(plan: PlanId) {
 export function planBlurb(plan: PlanId) {
   switch (plan) {
     case 'pattern':
-      return 'Reflection that names what sits under the noise, using your recent entries.'
+      return 'When a few is not enough. Same two minutes. You do not stop at almost quiet.'
     case 'forever':
-      return 'Your private history stays with you: patterns, memory, and room to go deeper.'
+      return 'When a few is not enough. Your private history stays with you.'
     default:
-      return 'Spill fast. AI helps you find the words. Entries stay with you.'
+      return 'Two minutes. Then quieter. Write and save every thought.'
   }
 }
 
-export function upgradeLabel(from: PlanId) {
-  return from === 'pattern' ? 'Go deeper' : 'Start seeing patterns'
+export function upgradeLabel() {
+  return 'Go all the way'
 }
 
 function formatBillingDate(iso: string | null | undefined) {

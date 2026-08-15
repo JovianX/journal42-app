@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { isFirebaseConfigured } from '../lib/firebase'
+import { captureLandingDraftFromSearch } from '../lib/landingDraft'
 
 function GoogleIcon() {
   return (
@@ -73,14 +75,37 @@ function friendlyAuthError(error: unknown): string {
 
 type AuthMode = 'signin' | 'signup' | 'reset'
 
+function initialAuthMode(pathname: string, modeParam: string | null): AuthMode {
+  if (pathname === '/signup' || modeParam === 'signup') return 'signup'
+  if (modeParam === 'reset') return 'reset'
+  return 'signin'
+}
+
 export default function Login() {
   const { signInWithGoogle, signInWithEmail, signUpWithEmail, sendPasswordReset } = useAuth()
-  const [mode, setMode] = useState<AuthMode>('signin')
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
+  const [mode, setMode] = useState<AuthMode>(() =>
+    initialAuthMode(location.pathname, searchParams.get('mode')),
+  )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [pending, setPending] = useState<'google' | 'email' | 'reset' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [landingDraft, setLandingDraft] = useState<string | null>(() =>
+    typeof window === 'undefined'
+      ? null
+      : captureLandingDraftFromSearch(window.location.search),
+  )
+
+  useEffect(() => {
+    setMode(initialAuthMode(location.pathname, searchParams.get('mode')))
+  }, [location.pathname, searchParams])
+
+  useEffect(() => {
+    setLandingDraft(captureLandingDraftFromSearch(location.search))
+  }, [location.search])
 
   function switchMode(next: AuthMode) {
     setMode(next)
@@ -158,13 +183,17 @@ export default function Login() {
   const authReady = isFirebaseConfigured
   const title =
     mode === 'signup'
-      ? 'Create your account'
+      ? landingDraft
+        ? 'Keep this thought'
+        : 'Create your account'
       : mode === 'reset'
         ? 'Reset your password'
         : 'Start journaling'
   const lead =
     mode === 'signup'
-      ? 'Pick an email and password. Your thoughts stay private.'
+      ? landingDraft
+        ? 'Create an account to save what you wrote. Reflect and chat, a few times a day, free.'
+        : 'Pick an email and password. Write, save, reflect. Your thoughts stay private.'
       : mode === 'reset'
         ? 'Enter your email and we will send a reset link.'
         : 'Log in with Google or email. Your thoughts stay private.'
@@ -184,6 +213,11 @@ export default function Login() {
         <h1>{title}</h1>
         <p className="auth-lead">{lead}</p>
 
+        {landingDraft && mode === 'signup' ? (
+          <blockquote className="auth-draft-preview">
+            <p>{landingDraft}</p>
+          </blockquote>
+        ) : null}
         {!authReady ? (
           <p className="auth-notice auth-notice-error" role="status">
             Firebase is not configured yet. Copy <code>app/.env.example</code> to{' '}

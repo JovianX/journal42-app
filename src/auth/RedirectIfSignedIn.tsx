@@ -27,9 +27,14 @@ export default function RedirectIfSignedIn() {
   }
 
   if (user) {
-    const plan = new URLSearchParams(location.search).get('plan')
-    const to = isPaidPlan(plan) ? `/?plan=${plan}` : '/'
-    return <Navigate to={to} replace />
+    const params = new URLSearchParams(location.search)
+    const plan = params.get('plan')
+    const draft = params.get('draft')
+    const next = new URLSearchParams()
+    if (isPaidPlan(plan)) next.set('plan', plan)
+    if (draft?.trim()) next.set('draft', draft.trim())
+    const query = next.toString()
+    return <Navigate to={query ? `/?${query}` : '/'} replace />
   }
 
   return <Outlet />

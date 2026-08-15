@@ -15,16 +15,22 @@ import AccountMenu, { useAccountSignOut } from '../components/AccountMenu'
 import {
   requestReflection,
   toReflectionErrorMessage,
+  ReflectionRequestError,
   type Reflection,
   type ReflectionHistoryItem,
 } from '../lib/ai'
 import {
+  hasUnlimitedAi,
   isPaidPlan,
-  planHasHistoryReflection,
+  PUBLIC_PAID_PLAN,
   useBilling,
-  type PaidPlanId,
 } from '../lib/billing'
 import { startCheckout } from '../lib/billingApi'
+import {
+  canSendChat,
+  canStartReflection,
+  useAiUsage,
+} from '../lib/aiUsage'
 import {
   createNugget,
   deleteNugget,
@@ -36,6 +42,11 @@ import {
   type DiscussionTurn,
   type Nugget,
 } from '../lib/journalStore'
+import {
+  captureLandingDraftFromSearch,
+  clearLandingDraft,
+  readLandingDraft,
+} from '../lib/landingDraft'
 import AuthLoading from '../auth/AuthLoading'
 
 const SHOW_PROOFREAD = false
@@ -191,7 +202,7 @@ function discussionFingerprint(discussion: DiscussionTurn[] | undefined) {
   return discussion
     .map(
       (turn) =>
-        `${turn.id}:${turn.comment ?? ''}:${turn.reflection?.text ?? ''}:${turn.reflection?.historyCite ?? ''}`,
+        `${turn.id}:${turn.comment ?? ''}:${turn.reflection?.text ?? ''}:${turn.reflection?.historyCite ?? ''}:${turn.usedHistory ? '1' : '0'}`,
     )
     .join('|')
 }
@@ -249,6 +260,34 @@ function FormingReflection({
   )
 }
 
+type PatternOffer = {
+  kind: 'gated-reflection' | 'gated-chat'
+  busy: boolean
+  onStart: () => void
+}
+
+function PatternUpsell({ kind, busy, onStart }: PatternOffer) {
+  const chat = kind === 'gated-chat'
+  return (
+    <div className="pattern-upsell is-gated">
+      <p className="pattern-upsell-copy">
+        {chat
+          ? "You've used today's 5 free replies. Go all the way if you need another reply."
+          : "You've used today's 3 free reflections. Go all the way if a few is not enough."}
+      </p>
+      <button
+        type="button"
+        className="btn-primary pattern-upsell-cta"
+        onClick={onStart}
+        disabled={busy}
+      >
+        {busy ? 'Opening checkout…' : 'Go all the way'}
+      </button>
+      <p className="pattern-upsell-note">$9/mo. Cancel anytime. Keep every entry.</p>
+    </div>
+  )
+}
+
 type ReflectionPanelProps = {
   open: boolean
   panel: DiscussionTurn[] | null
@@ -267,6 +306,7 @@ type ReflectionPanelProps = {
   onReplyChange: (value: string) => void
   onSendReply: () => void
   onCloseReply: () => void
+  offer?: PatternOffer | null
 }
 
 function ReflectionPanel({
@@ -287,6 +327,7 @@ function ReflectionPanel({
   onReplyChange,
   onSendReply,
   onCloseReply,
+  offer,
 }: ReflectionPanelProps) {
   const viewedTurn = panel?.[viewIndex] ?? null
   const isViewingLatest = Boolean(panel && viewIndex === panel.length - 1)
@@ -298,8 +339,9 @@ function ReflectionPanel({
     hasReflection &&
     isViewingLatest &&
     !loading &&
-    Boolean(viewedTurn?.reflection)
-  const showPanel = Boolean(viewedTurn) || loading || Boolean(error)
+    Boolean(viewedTurn?.reflection) &&
+    offer?.kind !== 'gated-chat'
+  const showPanel = Boolean(viewedTurn) || loading || Boolean(error) || Boolean(offer)
   const showInitialForming =
     loading && (!viewedTurn || Boolean(viewedTurn.reflection))
 
@@ -418,6 +460,10 @@ function ReflectionPanel({
                   </button>
                 </div>
               ) : null}
+
+              {offer && !loading ? (
+                <PatternUpsell {...offer} />
+              ) : null}
             </div>
 
             {showReplyRow ? (
@@ -487,6 +533,10 @@ function ReflectionPanel({
 type NuggetItemProps = {
   nugget: Nugget
   history: ReflectionHistoryItem[]
+  canRequestReflection: boolean
+  canRequestChat: boolean
+  billingBusy: boolean
+  onUpgrade: () => void
   user: User | null
   isFresh: boolean
   onSaveEdit: (text: string) => void
@@ -497,6 +547,10 @@ type NuggetItemProps = {
 function NuggetItem({
   nugget,
   history,
+  canRequestReflection,
+  canRequestChat,
+  billingBusy,
+  onUpgrade,
   user,
   isFresh,
   onSaveEdit,
@@ -534,6 +588,12 @@ function NuggetItem({
     canReflect && !voicePanelOpen && !hasStoredReflection && !isEditing && !voiceLoading
   const showContinueInvite =
     hasStoredReflection && !voicePanelOpen && !isEditing && !voiceLoading
+  const nuggetOffer: PatternOffer | null =
+    voicePanelOpen && !hasStoredReflection && !canRequestReflection
+      ? { kind: 'gated-reflection', busy: billingBusy, onStart: onUpgrade }
+      : voicePanelOpen && hasStoredReflection && !canRequestChat
+        ? { kind: 'gated-chat', busy: billingBusy, onStart: onUpgrade }
+        : null
 
   useEffect(() => {
     discussionDirtyRef.current = false
@@ -664,6 +724,11 @@ function NuggetItem({
 
   function fetchTurn(steer = '', pendingId?: string) {
     if (voiceLoading || !user) return
+    if (steer ? !canRequestChat : !canRequestReflection) {
+      voicePanelOpenRef.current = true
+      setVoicePanelOpen(true)
+      return
+    }
     if (nugget.text.trim().length < DRAFT_REFLECT_MIN_CHARS) {
       setVoiceError('Write a little more before reflecting.')
       return
@@ -691,16 +756,29 @@ function NuggetItem({
           if (steer) {
             if (pendingId && current.some((turn) => turn.id === pendingId)) {
               updated = current.map((turn) =>
-                turn.id === pendingId ? { ...turn, reflection: next } : turn,
+                turn.id === pendingId
+                  ? { ...turn, reflection: next, usedHistory: history.length > 0 }
+                  : turn,
               )
             } else {
               updated = [
                 ...current,
-                { id: createId(), comment: steer, reflection: next },
+                {
+                  id: createId(),
+                  comment: steer,
+                  reflection: next,
+                  ...(history.length > 0 ? { usedHistory: true } : {}),
+                },
               ]
             }
           } else {
-            updated = [{ id: createId(), reflection: next }]
+            updated = [
+              {
+                id: createId(),
+                reflection: next,
+                ...(history.length > 0 ? { usedHistory: true } : {}),
+              },
+            ]
           }
           const saved = persistableDiscussion(updated)
           discussionDirtyRef.current = true
@@ -712,6 +790,13 @@ function NuggetItem({
       })
       .catch((error: unknown) => {
         if (reflectionRequestRef.current !== requestId) return
+        if (error instanceof ReflectionRequestError && error.code === 'plan_limit') {
+          if (steer) {
+            setDiscussion((current) => current.filter((turn) => turn.reflection))
+          }
+          setVoiceError(null)
+          return
+        }
         setVoiceError(toReflectionErrorMessage(error))
       })
       .finally(() => {
@@ -732,12 +817,14 @@ function NuggetItem({
       setVoicePanel(discussion)
       setVoiceViewIndex(Math.max(discussion.length - 1, 0))
       if (options?.continueReply) {
+        if (!canRequestChat) return
         setVoiceReplyOpen(true)
         shouldRefocusReplyRef.current = true
       }
       return
     }
 
+    if (!canRequestReflection) return
     if (voiceLoading || !user) return
     fetchTurn(voiceRetryReply ?? '')
   }
@@ -786,6 +873,7 @@ function NuggetItem({
   function sendVoiceReply() {
     const steer = voiceReply.trim()
     if (!steer || !hasStoredReflection || !user || voiceLoading) return
+    if (!canRequestChat) return
 
     const pendingId = createId()
     setVoiceReply('')
@@ -999,6 +1087,7 @@ function NuggetItem({
           onReplyChange={setVoiceReply}
           onSendReply={sendVoiceReply}
           onCloseReply={() => setVoiceReplyOpen(false)}
+          offer={nuggetOffer}
         />
       </div>
     </li>
@@ -1010,6 +1099,7 @@ export default function JournalHome() {
   const { signingOut, onSignOut } = useAccountSignOut()
   const [searchParams, setSearchParams] = useSearchParams()
   const { billing, ready: billingReady } = useBilling(user?.uid)
+  const { usage } = useAiUsage(user?.uid)
   const [draft, setDraft] = useState('')
   const [nuggets, setNuggets] = useState<Nugget[]>([])
   const [journalReady, setJournalReady] = useState(false)
@@ -1055,9 +1145,8 @@ export default function JournalHome() {
   const [showThoughtsBelow, setShowThoughtsBelow] = useState(false)
   const dayGroups = useMemo(() => groupNuggetsByDay(nuggets, now), [nuggets, now])
   const reflectionHistory = useMemo(() => {
-    if (!planHasHistoryReflection(billing.plan)) return []
     return historyFromNuggets(nuggets)
-  }, [billing.plan, nuggets])
+  }, [nuggets])
   const showReflectionOrb = reflectionInvite && !voicePanelOpen
 
   voiceThreadRef.current = voiceThread
@@ -1147,22 +1236,49 @@ export default function JournalHome() {
     setCollapsedDays((current) => ({ ...current, [key]: !currentlyCollapsed }))
   }
 
-  async function runCheckout(plan: PaidPlanId) {
+  async function runCheckout() {
     if (!user || billingBusy) return
     setBillingBusy(true)
     setBillingError(null)
     try {
-      await startCheckout(user, plan)
+      await startCheckout(user, PUBLIC_PAID_PLAN)
     } catch (error) {
       setBillingError(error instanceof Error ? error.message : 'Checkout failed.')
       setBillingBusy(false)
     }
   }
 
+  function composerOffer(): PatternOffer | null {
+    if (hasUnlimitedAi(billing.plan) || !voicePanelOpen) return null
+    const viewingReflection = Boolean(
+      voicePanel?.some((turn) => turn.reflection) ||
+        voiceThread.some((turn) => turn.reflection),
+    )
+    if (viewingReflection && !canSendChat(billing.plan, usage)) {
+      return {
+        kind: 'gated-chat',
+        busy: billingBusy,
+        onStart: () => {
+          void runCheckout()
+        },
+      }
+    }
+    if (!viewingReflection && !canStartReflection(billing.plan, usage)) {
+      return {
+        kind: 'gated-reflection',
+        busy: billingBusy,
+        onStart: () => {
+          void runCheckout()
+        },
+      }
+    }
+    return null
+  }
+
   useEffect(() => {
     const requested = searchParams.get('plan')
     if (!user || !billingReady || !isPaidPlan(requested)) return
-    if (billing.plan === requested || (requested === 'pattern' && billing.plan === 'forever')) {
+    if (hasUnlimitedAi(billing.plan)) {
       const next = new URLSearchParams(searchParams)
       next.delete('plan')
       setSearchParams(next, { replace: true })
@@ -1172,10 +1288,31 @@ export default function JournalHome() {
     const next = new URLSearchParams(searchParams)
     next.delete('plan')
     setSearchParams(next, { replace: true })
-    void runCheckout(requested)
+    void runCheckout()
     // Auto-start checkout once when ?plan= is present after login.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, searchParams, billingReady, billing.plan])
+
+  useEffect(() => {
+    captureLandingDraftFromSearch(window.location.search)
+  }, [])
+
+  useEffect(() => {
+    if (!user || !journalReady) return
+    const landing = readLandingDraft()
+    if (!landing) return
+    if (draftRef.current.trim()) {
+      clearLandingDraft()
+      return
+    }
+    clearLandingDraft()
+    draftDirtyRef.current = true
+    setDraft(landing)
+    scheduleDraftPersist(landing)
+    setComposerInvite(true)
+    // Landing handoff once per session after journal hydrate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, journalReady])
 
   useEffect(() => {
     if (!user) {
@@ -1377,6 +1514,11 @@ export default function JournalHome() {
     if (!user || voiceLoading) return
     const trimmed = draft.trim()
     if (trimmed.length < DRAFT_REFLECT_MIN_CHARS) return
+    if (reply ? !canSendChat(billing.plan, usage) : !canStartReflection(billing.plan, usage)) {
+      voicePanelOpenRef.current = true
+      setVoicePanelOpen(true)
+      return
+    }
 
     voicePanelOpenRef.current = true
     setVoicePanelOpen(true)
@@ -1407,7 +1549,9 @@ export default function JournalHome() {
           if (reply) {
             if (pendingId && current.some((turn) => turn.id === pendingId)) {
               updated = current.map((turn) =>
-                turn.id === pendingId ? { ...turn, reflection: next } : turn,
+                turn.id === pendingId
+                  ? { ...turn, reflection: next, ...(reflectionHistory.length > 0 ? { usedHistory: true } : {}) }
+                  : turn,
               )
             } else {
               updated = [
@@ -1416,6 +1560,7 @@ export default function JournalHome() {
                   id: createId(),
                   comment: reply,
                   reflection: next,
+                  ...(reflectionHistory.length > 0 ? { usedHistory: true } : {}),
                 },
               ]
             }
@@ -1424,6 +1569,7 @@ export default function JournalHome() {
               {
                 id: createId(),
                 reflection: next,
+                ...(reflectionHistory.length > 0 ? { usedHistory: true } : {}),
               },
             ]
           }
@@ -1437,6 +1583,15 @@ export default function JournalHome() {
       .catch((error: unknown) => {
         if (controller.signal.aborted) return
         if (error instanceof DOMException && error.name === 'AbortError') return
+        if (error instanceof ReflectionRequestError && error.code === 'plan_limit') {
+          if (reply) {
+            setVoiceThread((current) => current.filter((turn) => turn.reflection))
+          } else {
+            setVoiceThread([])
+          }
+          setVoiceError(null)
+          return
+        }
         if (!reply) setVoiceThread([])
         setVoiceError(toReflectionErrorMessage(error))
       })
@@ -1460,6 +1615,7 @@ export default function JournalHome() {
       return
     }
 
+    if (!canStartReflection(billing.plan, usage)) return
     fetchReflection()
   }
 
@@ -1528,6 +1684,7 @@ export default function JournalHome() {
   function sendVoiceReply() {
     const steer = voiceReply.trim()
     if (!steer || !hasVoiceReflection || !user || voiceLoading) return
+    if (!canSendChat(billing.plan, usage)) return
 
     const pendingId = createId()
     setVoiceReply('')
@@ -1828,6 +1985,7 @@ export default function JournalHome() {
               onReplyChange={setVoiceReply}
               onSendReply={sendVoiceReply}
               onCloseReply={() => setVoiceReplyOpen(false)}
+              offer={composerOffer()}
             />
           </div>
 
@@ -1916,11 +2074,13 @@ export default function JournalHome() {
                           <NuggetItem
                             key={nugget.id}
                             nugget={nugget}
-                            history={
-                              planHasHistoryReflection(billing.plan)
-                                ? historyFromNuggets(nuggets, nugget.id)
-                                : []
-                            }
+                            history={historyFromNuggets(nuggets, nugget.id)}
+                            canRequestReflection={canStartReflection(billing.plan, usage)}
+                            canRequestChat={canSendChat(billing.plan, usage)}
+                            billingBusy={billingBusy}
+                            onUpgrade={() => {
+                              void runCheckout()
+                            }}
                             user={user}
                             isFresh={justDroppedId === nugget.id}
                             onSaveEdit={(text) => saveNugget(nugget.id, text)}

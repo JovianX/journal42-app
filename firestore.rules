@@ -11,6 +11,8 @@ service cloud.firestore {
     //   - draft: string (required on write, max 100000 chars) - composer draft
     //   - updatedAt: number (required on write) - draft last-write ms epoch
     //   - discussion: list (optional, max 40 turns) - composer reflection thread
+    //   - historyTastes: number (optional, 0..100, monotonic) - leftover field; unused by the app
+
     //
     // Collection: users/{uid}/nuggets
     // Document ID: client-generated id
@@ -23,6 +25,7 @@ service cloud.firestore {
     //   - id: string
     //   - comment: string (optional) - user reply that steered this turn
     //   - reflection: map (optional) with text + optional historyCite
+    //   - usedHistory: bool (optional) - this turn included past entries
     //
     // Collection: users/{uid}/billing/current
     // Fields (Admin SDK only):
@@ -30,6 +33,13 @@ service cloud.firestore {
     //   - status: 'active' | 'past_due' | 'cancelled' | 'expired' | 'none'
     //   - lemonSubscriptionId, lemonCustomerId, lemonVariantId (optional)
     //   - renewsAt, endsAt, portalUrl (optional)
+    //   - updatedAt: number
+    //
+    // Collection: users/{uid}/usage/daily
+    // Fields (Admin SDK only):
+    //   - dayKey: string (UTC YYYY-MM-DD)
+    //   - reflections: number (free reflections used today)
+    //   - chats: number (free chat replies used today)
     //   - updatedAt: number
     //
     // ===============================================================
@@ -49,11 +59,28 @@ service cloud.firestore {
     }
 
     function isValidUserDoc(data) {
-      return data.keys().hasOnly(['draft', 'updatedAt', 'discussion'])
+      return data.keys().hasOnly(['draft', 'updatedAt', 'discussion', 'historyTastes'])
         && data.draft is string
         && data.draft.size() <= 100000
         && data.updatedAt is number
-        && (!('discussion' in data) || isValidDiscussion(data.discussion));
+        && (!('discussion' in data) || isValidDiscussion(data.discussion))
+        && (!('historyTastes' in data)
+          || (data.historyTastes is int
+            && data.historyTastes >= 0
+            && data.historyTastes <= 100));
+    }
+
+    function historyTastesMonotonic() {
+      let prev = 0;
+      if (resource.data.keys().has('historyTastes') && resource.data.historyTastes is int) {
+        prev = resource.data.historyTastes;
+      }
+      let next = prev;
+      if (request.resource.data.keys().has('historyTastes')
+          && request.resource.data.historyTastes is int) {
+        next = request.resource.data.historyTastes;
+      }
+      return next == prev || next == prev + 1;
     }
 
     function isValidNugget(data) {
@@ -67,7 +94,12 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isOwner(uid);
-      allow create, update: if isOwner(uid) && isValidUserDoc(request.resource.data);
+      allow create: if isOwner(uid) && isValidUserDoc(request.resource.data)
+        && (!('historyTastes' in request.resource.data)
+          || request.resource.data.historyTastes == 0
+          || request.resource.data.historyTastes == 1);
+      allow update: if isOwner(uid) && isValidUserDoc(request.resource.data)
+        && historyTastesMonotonic();
       allow delete: if isOwner(uid);
 
       match /nuggets/{nuggetId} {
@@ -81,6 +113,12 @@ service cloud.firestore {
 
       // Written only by journal42-api (Admin SDK). Clients may read their plan.
       match /billing/{docId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Written only by journal42-api (Admin SDK). Clients may read remaining quota.
+      match /usage/{docId} {
         allow read: if isOwner(uid);
         allow write: if false;
       }

@@ -17,6 +17,7 @@ export type DiscussionTurn = {
   id: string
   comment?: string
   reflection?: Reflection
+  usedHistory?: boolean
 }
 
 export type Nugget = {
@@ -76,6 +77,7 @@ function parseDiscussion(raw: unknown): DiscussionTurn[] {
       id: data.id,
       ...(comment ? { comment } : {}),
       ...(reflection ? { reflection } : {}),
+      ...(data.usedHistory === true ? { usedHistory: true } : {}),
     })
   }
 
@@ -96,6 +98,7 @@ function serializeDiscussion(discussion: DiscussionTurn[]) {
     ...(turn.reflection
       ? { reflection: serializeReflection(turn.reflection) }
       : {}),
+    ...(turn.usedHistory ? { usedHistory: true } : {}),
   }))
 }
 

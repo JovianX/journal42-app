@@ -4,16 +4,18 @@ import { useAuth } from '../auth/useAuth'
 import AuthLoading from '../auth/AuthLoading'
 import {
   billingStatusLine,
+  canUpgradePlan,
   hasPaidBillingAccess,
   planBlurb,
   planLabel,
   planPrice,
+  PUBLIC_PAID_PLAN,
   upgradeLabel,
   useBilling,
   type BillingStatus,
-  type PaidPlanId,
   type PlanId,
 } from '../lib/billing'
+import { quotaLine, useAiUsage } from '../lib/aiUsage'
 import { openBillingPortal, startCheckout } from '../lib/billingApi'
 import { useAppInstall } from '../lib/useAppInstall'
 import { userInitials, userLabel } from '../lib/userDisplay'
@@ -46,6 +48,7 @@ function statusBadgeLabel(status: BillingStatus, plan: PlanId) {
 export default function Settings() {
   const { user, signOut, changePassword, sendPasswordReset } = useAuth()
   const { billing, ready: billingReady } = useBilling(user?.uid)
+  const { usage } = useAiUsage(user?.uid)
   const install = useAppInstall()
   const [photoFailed, setPhotoFailed] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -82,9 +85,8 @@ export default function Settings() {
   const fullLabel = userLabel(displayName, email)
   const initials = userInitials(displayName, email)
   const showPhoto = Boolean(photoURL && !photoFailed)
-  const canUpgrade = billing.plan !== 'forever'
+  const canUpgrade = canUpgradePlan(billing.plan)
   const canOpenLemonPortal = hasPaidBillingAccess(billing)
-  const upgradePlan: PaidPlanId = billing.plan === 'pattern' ? 'forever' : 'pattern'
   const statusLine = billingStatusLine(billing)
   const badge = statusBadgeLabel(billing.status, billing.plan)
   const tone = statusTone(billing.status, billing.plan)
@@ -98,7 +100,7 @@ export default function Settings() {
     setBillingBusy(true)
     setBillingError(null)
     try {
-      await startCheckout(signedInUser, upgradePlan)
+      await startCheckout(signedInUser, PUBLIC_PAID_PLAN)
     } catch (error) {
       setBillingError(error instanceof Error ? error.message : 'Checkout failed.')
       setBillingBusy(false)
@@ -391,6 +393,9 @@ export default function Settings() {
                       <span>{statusLine}</span>
                     </p>
                     <p className="settings-plan-blurb">{planBlurb(billing.plan)}</p>
+                    {canUpgrade ? (
+                      <p className="settings-plan-quota">{quotaLine(billing.plan, usage)}</p>
+                    ) : null}
                   </div>
                 </div>
 
@@ -402,10 +407,10 @@ export default function Settings() {
                       onClick={() => void onUpgrade()}
                       disabled={billingBusy || signingOut}
                     >
-                      {billingBusy ? 'Opening checkout…' : upgradeLabel(billing.plan)}
+                      {billingBusy ? 'Opening checkout…' : upgradeLabel()}
                     </button>
                   ) : (
-                    <p className="settings-plan-note">You are on the deepest plan.</p>
+                    <p className="settings-plan-note">Quieter, all the way.</p>
                   )}
                   {canOpenLemonPortal ? (
                     <button
@@ -419,7 +424,7 @@ export default function Settings() {
                   ) : null}
                 </div>
                 <p className="settings-plan-footnote">
-                  Payment methods are managed in Lemon Squeezy.
+                  Cancel anytime. Your entries stay yours.
                 </p>
               </div>
             </section>

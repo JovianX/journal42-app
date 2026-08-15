@@ -10,13 +10,14 @@ export type ReflectionHistoryItem = {
   createdAt?: number
 }
 
-export type ReflectionErrorCode = 'rate_limited' | 'unavailable' | 'provider'
+export type ReflectionErrorCode = 'rate_limited' | 'unavailable' | 'provider' | 'plan_limit'
 
 type ReflectResponse = {
   reflection?: Reflection
   error?: string
   code?: ReflectionErrorCode
   retryAfterMs?: number
+  kind?: 'reflection' | 'chat'
 }
 
 export class ReflectionRequestError extends Error {
@@ -114,7 +115,7 @@ export async function requestReflection({
 
     throw new ReflectionRequestError({
       status: response.status,
-      code: data.code ?? (response.status === 429 ? 'rate_limited' : 'provider'),
+      code: data.code ?? (response.status === 429 ? 'rate_limited' : response.status === 402 ? 'plan_limit' : 'provider'),
       retryAfterMs:
         data.retryAfterMs ??
         (Number.isFinite(retryAfterFromHeader) ? retryAfterFromHeader : undefined),
