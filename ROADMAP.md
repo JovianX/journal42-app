@@ -5,7 +5,7 @@ Items are not strict priority unless noted. Surfaces: `[app]` `[api]` `[website]
 
 ## Now (launch blockers)
 
-- [ ] Replace ngrok AI API URL with a stable production host (custom domain + HTTPS) `[api]` `[app]`
+- [x] Replace ngrok AI API URL with a stable production host (custom domain + HTTPS) `[api]` `[app]`
 - [ ] Add per-user / per-IP rate limits on `/reflect` (beyond provider 429 handling) `[api]`
 - [x] Enforce plan entitlements server-side on AI (never UI-only) `[api]`
 - [ ] Delete account and all data (Auth user + Firestore journal + billing cleanup) `[app]` `[api]`

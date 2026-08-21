@@ -80,7 +80,7 @@ Billing (Lemon Squeezy checkout, portal, webhooks) uses the same API base URL:
 | Mode | Default `VITE_AI_API_BASE` |
 | --- | --- |
 | `npm run dev` | `http://localhost:8787` |
-| production build | `https://unexhortative-recitable-edyth.ngrok-free.dev/journal42/api` |
+| production build | `https://api.journal42.cloud` |
 
 Entitlements live in Firestore at `users/{uid}/billing/current` (Admin SDK writes only). Free accounts get 3 reflections and 5 chat replies per UTC day (`users/{uid}/usage/daily`). Paid CTAs from the marketing site open `/login?plan=pattern|forever`, which starts checkout after sign-in.
 

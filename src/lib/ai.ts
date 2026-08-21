@@ -45,8 +45,7 @@ export class ReflectionRequestError extends Error {
 }
 
 const DEV_API_BASE = 'http://localhost:8787'
-const PROD_API_BASE =
-  'https://unexhortative-recitable-edyth.ngrok-free.dev/journal42/api'
+const PROD_API_BASE = 'https://api.journal42.cloud'
 
 export function getAiApiBase() {
   return (
