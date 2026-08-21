@@ -11,7 +11,7 @@ service cloud.firestore {
     //   - draft: string (required on write, max 100000 chars) - composer draft
     //   - updatedAt: number (required on write) - draft last-write ms epoch
     //   - discussion: list (optional, max 40 turns) - composer reflection thread
-    //   - historyTastes: number (optional, 0..100, monotonic) - leftover field; unused by the app
+    //   - historyTastes: number (optional, 0..100) - leftover field; unused by the app
 
     //
     // Collection: users/{uid}/nuggets
@@ -70,19 +70,6 @@ service cloud.firestore {
             && data.historyTastes <= 100));
     }
 
-    function historyTastesMonotonic() {
-      let prev = 0;
-      if (resource.data.keys().has('historyTastes') && resource.data.historyTastes is int) {
-        prev = resource.data.historyTastes;
-      }
-      let next = prev;
-      if (request.resource.data.keys().has('historyTastes')
-          && request.resource.data.historyTastes is int) {
-        next = request.resource.data.historyTastes;
-      }
-      return next == prev || next == prev + 1;
-    }
-
     function isValidNugget(data) {
       return data.keys().hasOnly(['text', 'createdAt', 'discussion'])
         && data.text is string
@@ -94,12 +81,8 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isOwner(uid);
-      allow create: if isOwner(uid) && isValidUserDoc(request.resource.data)
-        && (!('historyTastes' in request.resource.data)
-          || request.resource.data.historyTastes == 0
-          || request.resource.data.historyTastes == 1);
-      allow update: if isOwner(uid) && isValidUserDoc(request.resource.data)
-        && historyTastesMonotonic();
+      allow create: if isOwner(uid) && isValidUserDoc(request.resource.data);
+      allow update: if isOwner(uid) && isValidUserDoc(request.resource.data);
       allow delete: if isOwner(uid);
 
       match /nuggets/{nuggetId} {
