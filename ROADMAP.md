@@ -10,8 +10,8 @@ Items are not strict priority unless noted. Surfaces: `[app]` `[api]` `[website]
 - [x] Enforce plan entitlements server-side on AI (never UI-only) `[api]`
 - [ ] Delete account and all data (Auth user + Firestore journal + billing cleanup) `[app]` `[api]`
 - [ ] Point marketing primary CTAs at `https://app.journal42.cloud` signup/login; retire invite-only / waitlist as the main funnel `[website]`
-- [ ] Align Privacy + Terms with Firestore, AI vendors, Lemon Squeezy billing, and retention `[website]`
-- [ ] Link Privacy & Terms from app login / settings `[app]`
+- [x] Align Privacy + Terms with Firestore, AI vendors, Lemon Squeezy billing, and retention `[website]`
+- [x] Link Privacy & Terms from app login / settings `[app]`
 - [ ] Error monitoring on app + API (e.g. Sentry) with alerts on 5xx / webhook failures `[app]` `[api]`
 - [ ] Soft-launch e2e: signup → write → reflect → upgrade → paid feature → cancel; then a few real payments `[app]` `[api]` `[website]`
 

@@ -460,6 +460,30 @@ export default function Settings() {
               </div>
             </section>
 
+            <section className="settings-section" aria-labelledby="settings-legal-heading">
+              <h2 className="settings-section-title" id="settings-legal-heading">
+                Legal
+              </h2>
+              <div className="settings-item settings-item-session">
+                <div className="settings-item-copy">
+                  <p className="settings-item-label">Policies</p>
+                  <p className="settings-item-value settings-legal-links">
+                    <a href="https://journal42.cloud/privacy" rel="noreferrer">
+                      Privacy
+                    </a>
+                    <span aria-hidden="true"> · </span>
+                    <a href="https://journal42.cloud/terms" rel="noreferrer">
+                      Terms
+                    </a>
+                    <span aria-hidden="true"> · </span>
+                    <a href="https://journal42.cloud/contact" rel="noreferrer">
+                      Contact
+                    </a>
+                  </p>
+                </div>
+              </div>
+            </section>
+
             <section className="settings-section settings-section-session">
               <div className="settings-item settings-item-session">
                 <div className="settings-item-copy">

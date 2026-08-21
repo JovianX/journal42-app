@@ -3773,6 +3773,26 @@ button.reflection-orb {
   color: var(--muted);
 }
 
+.auth-footer a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.auth-footer a:hover {
+  color: var(--ink);
+}
+
+.settings-legal-links a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+}
+
+.settings-legal-links a:hover {
+  color: var(--ink);
+}
+
 @media (max-width: 640px) {
   .app-header {
     padding: 0.95rem 1rem;

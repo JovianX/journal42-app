@@ -363,6 +363,14 @@ export default function Login() {
 
         <p className="auth-footer">
           Private by design. Your thoughts stay yours.
+          <br />
+          <a href="https://journal42.cloud/privacy" rel="noreferrer">
+            Privacy
+          </a>
+          {' · '}
+          <a href="https://journal42.cloud/terms" rel="noreferrer">
+            Terms
+          </a>
         </p>
       </div>
     </div>
