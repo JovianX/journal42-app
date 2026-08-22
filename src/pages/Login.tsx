@@ -3,6 +3,7 @@ import { useLocation, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import { isFirebaseConfigured } from '../lib/firebase'
 import { captureLandingDraftFromSearch } from '../lib/landingDraft'
+import { initMetaPixel, trackMetaPageView } from '../lib/metaPixel'
 
 function GoogleIcon() {
   return (
@@ -102,6 +103,11 @@ export default function Login() {
   useEffect(() => {
     setMode(initialAuthMode(location.pathname, searchParams.get('mode')))
   }, [location.pathname, searchParams])
+
+  useEffect(() => {
+    initMetaPixel()
+    trackMetaPageView()
+  }, [])
 
   useEffect(() => {
     setLandingDraft(captureLandingDraftFromSearch(location.search))

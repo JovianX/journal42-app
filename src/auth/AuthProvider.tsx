@@ -7,6 +7,7 @@ import {
   EmailAuthProvider,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
+  getAdditionalUserInfo,
   getRedirectResult,
   onAuthStateChanged,
   reauthenticateWithCredential,
@@ -19,6 +20,7 @@ import {
   type User,
 } from 'firebase/auth'
 import { auth, isFirebaseConfigured, requireAuth } from '../lib/firebase'
+import { trackCompleteRegistration } from '../lib/metaPixel'
 import { requestPasswordReset } from '../lib/passwordResetApi'
 import { AuthContext } from './auth-context'
 
@@ -46,9 +48,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let active = true
 
-    getRedirectResult(auth).catch(() => {
-      // Ignore redirect errors here; login UI surfaces sign-in failures.
-    })
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result && getAdditionalUserInfo(result)?.isNewUser) {
+          trackCompleteRegistration()
+        }
+      })
+      .catch(() => {
+        // Ignore redirect errors here; login UI surfaces sign-in failures.
+      })
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       if (!active) return
@@ -67,7 +75,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const provider = new GoogleAuthProvider()
 
     try {
-      await signInWithPopup(firebaseAuth, provider)
+      const credential = await signInWithPopup(firebaseAuth, provider)
+      if (getAdditionalUserInfo(credential)?.isNewUser) {
+        trackCompleteRegistration()
+      }
     } catch (error) {
       const code = getAuthErrorCode(error)
       if (REDIRECT_FALLBACK_CODES.has(code)) {
@@ -84,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signUpWithEmail(email: string, password: string) {
     await createUserWithEmailAndPassword(requireAuth(), email, password)
+    trackCompleteRegistration()
   }
 
   async function sendPasswordReset(email: string) {

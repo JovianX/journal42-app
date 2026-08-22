@@ -9,6 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MESSAGING_SENDER_ID?: string
   readonly VITE_FIREBASE_STORAGE_BUCKET?: string
   readonly VITE_AI_API_BASE?: string
+  readonly VITE_META_PIXEL_ID?: string
 }
 
 interface ImportMeta {
