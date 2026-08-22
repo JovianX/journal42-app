@@ -6,50 +6,31 @@ import {
   billingStatusLine,
   canUpgradePlan,
   hasPaidBillingAccess,
-  planBlurb,
   planLabel,
   planPrice,
   PUBLIC_PAID_PLAN,
   upgradeLabel,
   useBilling,
-  type BillingStatus,
-  type PlanId,
 } from '../lib/billing'
 import { quotaLine, useAiUsage } from '../lib/aiUsage'
+import { deleteAccount } from '../lib/accountApi'
 import { openBillingPortal, startCheckout } from '../lib/billingApi'
 import { useAppInstall } from '../lib/useAppInstall'
-import { userInitials, userLabel } from '../lib/userDisplay'
-
-function statusTone(status: BillingStatus, plan: PlanId) {
-  if (status === 'past_due') return 'is-warn'
-  if (status === 'cancelled' || status === 'expired') return 'is-muted'
-  if (plan !== 'clear-head' && status === 'active') return 'is-ok'
-  return 'is-muted'
-}
-
-function statusBadgeLabel(status: BillingStatus, plan: PlanId) {
-  if (plan === 'clear-head' && (status === 'none' || status === 'expired')) {
-    return 'Free'
-  }
-  switch (status) {
-    case 'active':
-      return 'Active'
-    case 'past_due':
-      return 'Past due'
-    case 'cancelled':
-      return 'Cancelling'
-    case 'expired':
-      return 'Expired'
-    default:
-      return 'Free'
-  }
-}
+import { userFirstName, userInitials } from '../lib/userDisplay'
 
 export default function Settings() {
-  const { user, signOut, changePassword, sendPasswordReset } = useAuth()
+  const {
+    user,
+    signOut,
+    changePassword,
+    sendPasswordReset,
+    reauthenticateWithPassword,
+    reauthenticateWithGoogle,
+  } = useAuth()
   const { billing, ready: billingReady } = useBilling(user?.uid)
   const { usage } = useAiUsage(user?.uid)
   const install = useAppInstall()
+
   const [photoFailed, setPhotoFailed] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [billingBusy, setBillingBusy] = useState(false)
@@ -62,9 +43,14 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState('')
   const [nextPassword, setNextPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showDeleteForm, setShowDeleteForm] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
-    document.title = 'Journal42: Settings'
+    document.title = 'Journal42 · Account'
     return () => {
       document.title = 'Journal42'
     }
@@ -78,45 +64,43 @@ export default function Settings() {
     return <AuthLoading />
   }
 
-  const signedInUser = user
-  const displayName = signedInUser.displayName ?? null
-  const email = signedInUser.email ?? null
-  const photoURL = signedInUser.photoURL ?? null
-  const fullLabel = userLabel(displayName, email)
+  const account = user
+  const email = account.email ?? null
+  const displayName = account.displayName ?? null
+  const photoURL = account.photoURL ?? null
+  const firstName = userFirstName(displayName, email)
   const initials = userInitials(displayName, email)
   const showPhoto = Boolean(photoURL && !photoFailed)
   const canUpgrade = canUpgradePlan(billing.plan)
-  const canOpenLemonPortal = hasPaidBillingAccess(billing)
+  const canOpenPortal = hasPaidBillingAccess(billing)
   const statusLine = billingStatusLine(billing)
-  const badge = statusBadgeLabel(billing.status, billing.plan)
-  const tone = statusTone(billing.status, billing.plan)
-  const hasPasswordProvider = signedInUser.providerData.some(
+  const hasPasswordProvider = account.providerData.some(
     (provider) => provider.providerId === 'password',
   )
-  const signInMethod = hasPasswordProvider ? 'Email & password' : 'Google'
+  const showInstall = install.kind === 'prompt' || install.kind === 'ios-hint'
+  const planName = planLabel(billing.plan)
+  const price = planPrice(billing.plan)
 
   async function onUpgrade() {
     if (billingBusy) return
     setBillingBusy(true)
     setBillingError(null)
     try {
-      await startCheckout(signedInUser, PUBLIC_PAID_PLAN)
+      await startCheckout(account, PUBLIC_PAID_PLAN)
     } catch (error) {
       setBillingError(error instanceof Error ? error.message : 'Checkout failed.')
       setBillingBusy(false)
     }
   }
 
-  async function onUpdatePayment() {
+  async function onManageBilling() {
     if (billingBusy) return
     setBillingBusy(true)
     setBillingError(null)
     try {
-      await openBillingPortal(signedInUser)
+      await openBillingPortal(account)
     } catch (error) {
-      setBillingError(
-        error instanceof Error ? error.message : 'Could not open payment settings.',
-      )
+      setBillingError(error instanceof Error ? error.message : 'Could not open billing.')
       setBillingBusy(false)
     }
   }
@@ -134,7 +118,6 @@ export default function Settings() {
   async function onChangePassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (passwordBusy) return
-
     if (nextPassword.length < 6) {
       setPasswordError('New password should be at least 6 characters.')
       return
@@ -196,6 +179,58 @@ export default function Settings() {
     }
   }
 
+  async function onDeleteAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (deleteBusy || signingOut) return
+
+    const expected = (email ?? '').trim().toLowerCase()
+    if (!expected) {
+      setDeleteError('This account has no email on file. Contact hello@journal42.cloud.')
+      return
+    }
+    if (deleteConfirmation.trim().toLowerCase() !== expected) {
+      setDeleteError('Type your account email to confirm.')
+      return
+    }
+
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      if (hasPasswordProvider) {
+        if (!deletePassword) {
+          setDeleteError('Enter your password to confirm.')
+          setDeleteBusy(false)
+          return
+        }
+        await reauthenticateWithPassword(deletePassword)
+      } else {
+        await reauthenticateWithGoogle()
+      }
+      await deleteAccount(account)
+      await signOut()
+      window.location.assign('https://journal42.cloud')
+    } catch (error) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as { code: unknown }).code)
+          : ''
+      setDeleteError(
+        code === 'auth/wrong-password' ||
+          code === 'auth/invalid-credential' ||
+          code === 'auth/invalid-login-credentials'
+          ? 'Password is incorrect.'
+          : code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request'
+            ? 'Google confirmation was cancelled.'
+            : code === 'auth/too-many-requests'
+              ? 'Too many attempts. Wait a moment and try again.'
+              : error instanceof Error
+                ? error.message
+                : 'Could not delete account. Try again in a moment.',
+      )
+      setDeleteBusy(false)
+    }
+  }
+
   return (
     <div className="app-shell settings-shell">
       <div className="app-atmosphere" aria-hidden="true">
@@ -204,7 +239,7 @@ export default function Settings() {
         <div className="app-grain" />
       </div>
 
-      <header className="app-header settings-header">
+      <header className="app-header">
         <Link className="app-logo" to="/" aria-label="Journal42 home">
           Journal<span>42</span>
         </Link>
@@ -215,14 +250,14 @@ export default function Settings() {
 
       <main className="app-main settings-main">
         {billingError ? (
-          <p className="journal-sync-error settings-alert" role="alert">
+          <p className="journal-sync-error" role="alert">
             {billingError}
           </p>
         ) : null}
 
-        <div className="settings-page" aria-label="Settings">
-          <header className="settings-hero">
-            <div className="settings-hero-row">
+        <div className="settings-page">
+          <div className="settings-sheet">
+            <header className="settings-identity">
               <span className="settings-avatar" aria-hidden="true">
                 {showPhoto ? (
                   <img
@@ -236,67 +271,62 @@ export default function Settings() {
                   initials
                 )}
               </span>
-              <div>
-                <h1 className="settings-title">Account</h1>
-                <p className="settings-lead">{fullLabel}</p>
+              <div className="settings-identity-copy">
+                <h1 className="settings-title">{firstName || 'Account'}</h1>
+                {email ? <p className="settings-email">{email}</p> : null}
               </div>
-            </div>
-          </header>
+            </header>
 
-          <div className="settings-surface">
-            <section className="settings-section" aria-labelledby="settings-profile-heading">
-              <h2 className="settings-section-title" id="settings-profile-heading">
-                Profile
-              </h2>
+            <section className="settings-plan" aria-label="Plan">
+              <div className="settings-plan-top">
+                <p className="settings-eyebrow">Plan</p>
+                <p className="settings-plan-price">{price}</p>
+              </div>
+              <p className="settings-plan-name">{planName}</p>
+              {canUpgrade ? (
+                <p className="settings-plan-meta">{quotaLine(billing.plan, usage)}</p>
+              ) : statusLine ? (
+                <p className="settings-plan-meta">{statusLine}</p>
+              ) : null}
 
-              <div className="settings-list">
-                <div className="settings-item">
-                  <div className="settings-item-copy">
-                    <p className="settings-item-label">Display name</p>
-                    <p
-                      className={`settings-item-value${displayName?.trim() ? '' : ' is-empty'}`}
-                    >
-                      {displayName?.trim() || 'Not set'}
-                    </p>
-                  </div>
+              {canUpgrade ? (
+                <div className="settings-plan-cta">
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => void onUpgrade()}
+                    disabled={billingBusy || signingOut}
+                  >
+                    {billingBusy ? 'Opening…' : upgradeLabel()}
+                  </button>
+                  <p className="settings-plan-note">
+                    {planPrice(PUBLIC_PAID_PLAN)}. Cancel anytime.
+                  </p>
                 </div>
+              ) : canOpenPortal ? (
+                <button
+                  type="button"
+                  className="settings-inline-link"
+                  onClick={() => void onManageBilling()}
+                  disabled={billingBusy || signingOut}
+                >
+                  {billingBusy ? 'Opening…' : 'Manage billing'}
+                </button>
+              ) : null}
+            </section>
 
-                <div className="settings-item">
-                  <div className="settings-item-copy">
-                    <p className="settings-item-label">Email</p>
-                    <p className="settings-item-value">{email || 'Not set'}</p>
-                  </div>
-                </div>
-
-                <div className="settings-item">
-                  <div className="settings-item-copy">
-                    <p className="settings-item-label">Sign-in</p>
-                    <p className="settings-item-value">{signInMethod}</p>
-                  </div>
-                </div>
-
-                <div className="settings-item">
-                  <div className="settings-item-copy">
-                    <p className="settings-item-label">Password</p>
-                    <p className="settings-item-value">
-                      {hasPasswordProvider
-                        ? 'Set for this account'
-                        : 'Not used with Google sign-in'}
-                    </p>
-                  </div>
-                  {hasPasswordProvider ? (
-                    <div className="settings-item-actions">
+            <nav className="settings-actions" aria-label="Account actions">
+              {hasPasswordProvider ? (
+                <div className="settings-action">
+                  <div className="settings-action-row">
+                    <div className="settings-action-copy">
+                      <p className="settings-action-label">Password</p>
+                      <p className="settings-action-hint">Email sign-in</p>
+                    </div>
+                    <div className="settings-action-links">
                       <button
                         type="button"
-                        className="settings-link-btn"
-                        onClick={() => void onSendPasswordReset()}
-                        disabled={resetBusy || passwordBusy || signingOut || !email}
-                      >
-                        {resetBusy ? 'Sending…' : 'Reset'}
-                      </button>
-                      <button
-                        type="button"
-                        className="settings-link-btn"
+                        className="settings-inline-link"
                         onClick={() => {
                           setShowPasswordForm((open) => !open)
                           setPasswordError(null)
@@ -306,203 +336,210 @@ export default function Settings() {
                       >
                         {showPasswordForm ? 'Cancel' : 'Change'}
                       </button>
+                      <button
+                        type="button"
+                        className="settings-inline-link"
+                        onClick={() => void onSendPasswordReset()}
+                        disabled={resetBusy || passwordBusy || signingOut || !email}
+                      >
+                        {resetBusy ? 'Sending…' : 'Reset'}
+                      </button>
                     </div>
+                  </div>
+
+                  {showPasswordForm ? (
+                    <form className="settings-form" onSubmit={onChangePassword}>
+                      <label className="settings-field">
+                        <span>Current</span>
+                        <input
+                          type="password"
+                          name="current-password"
+                          autoComplete="current-password"
+                          value={currentPassword}
+                          onChange={(event) => setCurrentPassword(event.target.value)}
+                          disabled={passwordBusy || signingOut}
+                          required
+                        />
+                      </label>
+                      <label className="settings-field">
+                        <span>New</span>
+                        <input
+                          type="password"
+                          name="new-password"
+                          autoComplete="new-password"
+                          value={nextPassword}
+                          onChange={(event) => setNextPassword(event.target.value)}
+                          disabled={passwordBusy || signingOut}
+                          required
+                          minLength={6}
+                        />
+                      </label>
+                      <label className="settings-field">
+                        <span>Confirm</span>
+                        <input
+                          type="password"
+                          name="confirm-password"
+                          autoComplete="new-password"
+                          value={confirmPassword}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                          disabled={passwordBusy || signingOut}
+                          required
+                          minLength={6}
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        className="btn-primary"
+                        disabled={passwordBusy || signingOut}
+                      >
+                        {passwordBusy ? 'Updating…' : 'Update password'}
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {passwordNotice ? (
+                    <p className="settings-flash" role="status">
+                      {passwordNotice}
+                    </p>
+                  ) : null}
+                  {passwordError ? (
+                    <p className="settings-flash is-error" role="alert">
+                      {passwordError}
+                    </p>
                   ) : null}
                 </div>
-              </div>
-
-              {hasPasswordProvider && showPasswordForm ? (
-                <form className="settings-password-form" onSubmit={onChangePassword}>
-                  <label className="settings-password-field">
-                    <span>Current password</span>
-                    <input
-                      type="password"
-                      name="current-password"
-                      autoComplete="current-password"
-                      value={currentPassword}
-                      onChange={(event) => setCurrentPassword(event.target.value)}
-                      disabled={passwordBusy || signingOut}
-                      required
-                    />
-                  </label>
-                  <div className="settings-password-grid">
-                    <label className="settings-password-field">
-                      <span>New password</span>
-                      <input
-                        type="password"
-                        name="new-password"
-                        autoComplete="new-password"
-                        value={nextPassword}
-                        onChange={(event) => setNextPassword(event.target.value)}
-                        disabled={passwordBusy || signingOut}
-                        required
-                        minLength={6}
-                      />
-                    </label>
-                    <label className="settings-password-field">
-                      <span>Confirm</span>
-                      <input
-                        type="password"
-                        name="confirm-password"
-                        autoComplete="new-password"
-                        value={confirmPassword}
-                        onChange={(event) => setConfirmPassword(event.target.value)}
-                        disabled={passwordBusy || signingOut}
-                        required
-                        minLength={6}
-                      />
-                    </label>
-                  </div>
-                  <button
-                    type="submit"
-                    className="btn-primary settings-btn"
-                    disabled={passwordBusy || signingOut}
-                  >
-                    {passwordBusy ? 'Updating…' : 'Update password'}
-                  </button>
-                </form>
               ) : null}
 
-              {passwordNotice ? (
-                <p className="settings-inline-notice" role="status">
-                  {passwordNotice}
-                </p>
-              ) : null}
-              {passwordError ? (
-                <p className="settings-inline-notice is-error" role="alert">
-                  {passwordError}
-                </p>
-              ) : null}
-            </section>
-
-            <section className="settings-section" aria-labelledby="settings-plan-heading">
-              <h2 className="settings-section-title" id="settings-plan-heading">
-                Plan &amp; billing
-              </h2>
-
-              <div className="settings-plan">
-                <div className="settings-plan-top">
-                  <div>
-                    <div className="settings-plan-meta">
-                      <h3 className="settings-plan-name">{planLabel(billing.plan)}</h3>
-                      <span className={`settings-badge ${tone}`}>{badge}</span>
+              {showInstall ? (
+                <div className="settings-action">
+                  <div className="settings-action-row">
+                    <div className="settings-action-copy">
+                      <p className="settings-action-label">Install</p>
+                      <p className="settings-action-hint">
+                        {install.kind === 'ios-hint'
+                          ? 'Share → Add to Home Screen'
+                          : 'Keep it on your home screen'}
+                      </p>
                     </div>
-                    <p className="settings-plan-line">
-                      <span>{planPrice(billing.plan)}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{statusLine}</span>
-                    </p>
-                    <p className="settings-plan-blurb">{planBlurb(billing.plan)}</p>
-                    {canUpgrade ? (
-                      <p className="settings-plan-quota">{quotaLine(billing.plan, usage)}</p>
+                    {install.kind === 'prompt' ? (
+                      <button
+                        type="button"
+                        className="settings-inline-link"
+                        onClick={() => void install.install()}
+                        disabled={install.busy || signingOut}
+                      >
+                        {install.busy ? 'Installing…' : 'Install'}
+                      </button>
                     ) : null}
                   </div>
                 </div>
+              ) : null}
 
-                <div className="settings-plan-actions">
-                  {canUpgrade ? (
-                    <button
-                      type="button"
-                      className="btn-primary settings-btn"
-                      onClick={() => void onUpgrade()}
-                      disabled={billingBusy || signingOut}
-                    >
-                      {billingBusy ? 'Opening checkout…' : upgradeLabel()}
-                    </button>
-                  ) : (
-                    <p className="settings-plan-note">Quieter, all the way.</p>
-                  )}
-                  {canOpenLemonPortal ? (
-                    <button
-                      type="button"
-                      className="btn-ghost settings-btn"
-                      onClick={() => void onUpdatePayment()}
-                      disabled={billingBusy || signingOut}
-                    >
-                      {billingBusy ? 'Opening…' : 'Update payment method'}
-                    </button>
-                  ) : null}
-                </div>
-                <p className="settings-plan-footnote">
-                  Cancel anytime. Your entries stay yours.
+              <button
+                type="button"
+                className="settings-menu-btn"
+                onClick={() => void onSignOut()}
+                disabled={signingOut || deleteBusy}
+              >
+                {signingOut ? 'Signing out…' : 'Sign out'}
+              </button>
+            </nav>
+          </div>
+
+          {showDeleteForm ? (
+            <form className="settings-delete-panel" onSubmit={onDeleteAccount}>
+              <p className="settings-delete-lead">
+                This removes your journal and sign-in
+                {canOpenPortal ? ', and cancels billing' : ''}. Permanent.
+              </p>
+              <label className="settings-field">
+                <span>Type your email</span>
+                <input
+                  type="email"
+                  name="delete-confirmation"
+                  autoComplete="off"
+                  value={deleteConfirmation}
+                  onChange={(event) => setDeleteConfirmation(event.target.value)}
+                  disabled={deleteBusy || signingOut}
+                  required
+                  placeholder={email ?? 'you@example.com'}
+                />
+              </label>
+              {hasPasswordProvider ? (
+                <label className="settings-field">
+                  <span>Password</span>
+                  <input
+                    type="password"
+                    name="delete-password"
+                    autoComplete="current-password"
+                    value={deletePassword}
+                    onChange={(event) => setDeletePassword(event.target.value)}
+                    disabled={deleteBusy || signingOut}
+                    required
+                  />
+                </label>
+              ) : (
+                <p className="settings-plan-meta">You&apos;ll confirm with Google next.</p>
+              )}
+              {deleteError ? (
+                <p className="settings-flash is-error" role="alert">
+                  {deleteError}
                 </p>
-              </div>
-            </section>
-
-            <section className="settings-section" aria-labelledby="settings-install-heading">
-              <h2 className="settings-section-title" id="settings-install-heading">
-                Install
-              </h2>
-
-              <div className="settings-item settings-item-session">
-                <div className="settings-item-copy">
-                  <p className="settings-item-label">App</p>
-                  <p className="settings-item-value">
-                    {install.kind === 'installed'
-                      ? 'Installed on this device'
-                      : install.kind === 'ios-hint'
-                        ? 'On iPhone or iPad: Share → Add to Home Screen'
-                        : install.kind === 'prompt'
-                          ? 'Add Journal42 to your home screen or dock'
-                          : 'Use your browser’s install or “Add to Home Screen” option'}
-                  </p>
-                </div>
-                {install.kind === 'prompt' ? (
-                  <button
-                    type="button"
-                    className="btn-primary settings-btn settings-install-btn"
-                    onClick={() => void install.install()}
-                    disabled={install.busy || signingOut}
-                  >
-                    {install.busy ? 'Installing…' : 'Install app'}
-                  </button>
-                ) : null}
-              </div>
-            </section>
-
-            <section className="settings-section" aria-labelledby="settings-legal-heading">
-              <h2 className="settings-section-title" id="settings-legal-heading">
-                Legal
-              </h2>
-              <div className="settings-item settings-item-session">
-                <div className="settings-item-copy">
-                  <p className="settings-item-label">Policies</p>
-                  <p className="settings-item-value settings-legal-links">
-                    <a href="https://journal42.cloud/privacy" rel="noreferrer">
-                      Privacy
-                    </a>
-                    <span aria-hidden="true"> · </span>
-                    <a href="https://journal42.cloud/terms" rel="noreferrer">
-                      Terms
-                    </a>
-                    <span aria-hidden="true"> · </span>
-                    <a href="https://journal42.cloud/contact" rel="noreferrer">
-                      Contact
-                    </a>
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section className="settings-section settings-section-session">
-              <div className="settings-item settings-item-session">
-                <div className="settings-item-copy">
-                  <p className="settings-item-label" id="settings-session-heading">
-                    Session
-                  </p>
-                  <p className="settings-item-value">Sign out on this device</p>
-                </div>
+              ) : null}
+              <div className="settings-form-actions">
                 <button
                   type="button"
-                  className="settings-signout"
-                  onClick={() => void onSignOut()}
-                  disabled={signingOut}
+                  className="settings-inline-link"
+                  onClick={() => {
+                    setShowDeleteForm(false)
+                    setDeleteConfirmation('')
+                    setDeletePassword('')
+                    setDeleteError(null)
+                  }}
+                  disabled={deleteBusy}
                 >
-                  {signingOut ? 'Signing out…' : 'Sign out'}
+                  Keep account
+                </button>
+                <button
+                  type="submit"
+                  className="settings-danger-btn"
+                  disabled={deleteBusy || signingOut}
+                >
+                  {deleteBusy
+                    ? hasPasswordProvider
+                      ? 'Deleting…'
+                      : 'Confirm with Google…'
+                    : 'Delete forever'}
                 </button>
               </div>
-            </section>
-          </div>
+            </form>
+          ) : null}
+
+          <p className="settings-footer">
+            <button
+              type="button"
+              className="settings-footer-delete"
+              onClick={() => {
+                setShowDeleteForm(true)
+                setDeleteError(null)
+              }}
+              disabled={deleteBusy || signingOut || showDeleteForm}
+            >
+              Delete account
+            </button>
+            <span aria-hidden="true">·</span>
+            <a href="https://journal42.cloud/privacy" rel="noreferrer">
+              Privacy
+            </a>
+            <span aria-hidden="true">·</span>
+            <a href="https://journal42.cloud/terms" rel="noreferrer">
+              Terms
+            </a>
+            <span aria-hidden="true">·</span>
+            <a href="https://journal42.cloud/contact" rel="noreferrer">
+              Contact
+            </a>
+          </p>
         </div>
       </main>
     </div>

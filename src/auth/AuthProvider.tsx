@@ -10,6 +10,7 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   reauthenticateWithCredential,
+  reauthenticateWithPopup,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
@@ -104,6 +105,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await updatePassword(currentUser, nextPassword)
   }
 
+
+  async function reauthenticateWithPassword(password: string) {
+    const firebaseAuth = requireAuth()
+    const currentUser = firebaseAuth.currentUser
+    if (!currentUser?.email) {
+      throw new Error('You must be signed in with email to confirm deletion.')
+    }
+    const credential = EmailAuthProvider.credential(currentUser.email, password)
+    await reauthenticateWithCredential(currentUser, credential)
+  }
+
+  async function reauthenticateWithGoogle() {
+    const firebaseAuth = requireAuth()
+    const currentUser = firebaseAuth.currentUser
+    if (!currentUser) {
+      throw new Error('You must be signed in to confirm deletion.')
+    }
+    const provider = new GoogleAuthProvider()
+    try {
+      await reauthenticateWithPopup(currentUser, provider)
+    } catch (error) {
+      const code = getAuthErrorCode(error)
+      if (REDIRECT_FALLBACK_CODES.has(code)) {
+        throw new Error('Pop-up was blocked. Allow pop-ups, then try again.')
+      }
+      throw error
+    }
+  }
+
   async function signOut() {
     await firebaseSignOut(requireAuth())
   }
@@ -118,6 +148,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signUpWithEmail,
         sendPasswordReset,
         changePassword,
+        reauthenticateWithPassword,
+        reauthenticateWithGoogle,
         signOut,
       }}
     >

@@ -8,7 +8,7 @@ Items are not strict priority unless noted. Surfaces: `[app]` `[api]` `[website]
 - [x] Replace ngrok AI API URL with a stable production host (custom domain + HTTPS) `[api]` `[app]`
 - [ ] Add per-user / per-IP rate limits on `/reflect` (beyond provider 429 handling) `[api]`
 - [x] Enforce plan entitlements server-side on AI (never UI-only) `[api]`
-- [ ] Delete account and all data (Auth user + Firestore journal + billing cleanup) `[app]` `[api]`
+- [x] Delete account and all data (Auth user + Firestore journal + billing cleanup) `[app]` `[api]`
 - [ ] Point marketing primary CTAs at `https://app.journal42.cloud` signup/login; retire invite-only / waitlist as the main funnel `[website]`
 - [x] Align Privacy + Terms with Firestore, AI vendors, Lemon Squeezy billing, and retention `[website]`
 - [x] Link Privacy & Terms from app login / settings `[app]`

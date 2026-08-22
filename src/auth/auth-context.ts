@@ -11,6 +11,8 @@ export type AuthContextValue = {
   signUpWithEmail: (email: string, password: string) => Promise<void>
   sendPasswordReset: (email: string) => Promise<void>
   changePassword: (currentPassword: string, nextPassword: string) => Promise<void>
+  reauthenticateWithPassword: (password: string) => Promise<void>
+  reauthenticateWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
 
