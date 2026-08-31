@@ -24,7 +24,7 @@ export default defineConfig({
       manifest: {
         name: 'Journal42',
         short_name: 'Journal42',
-        description: 'Private journaling for tech workers.',
+        description: 'Private journaling.',
         theme_color: '#e8eef2',
         background_color: '#e8eef2',
         display: 'standalone',
