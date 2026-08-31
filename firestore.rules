@@ -12,6 +12,8 @@ service cloud.firestore {
     //   - updatedAt: number (required on write) - draft last-write ms epoch
     //   - discussion: list (optional, max 40 turns) - composer reflection thread
     //   - historyTastes: number (optional, 0..100) - leftover field; unused by the app
+    //   - journalLockSalt: string (optional) - base64 salt for client-side journal encryption
+    //   - journalLockVerifier: string (optional) - encrypted verifier for the journal passcode
 
     //
     // Collection: users/{uid}/nuggets
@@ -59,7 +61,7 @@ service cloud.firestore {
     }
 
     function isValidUserDoc(data) {
-      return data.keys().hasOnly(['draft', 'updatedAt', 'discussion', 'historyTastes'])
+      return data.keys().hasOnly(['draft', 'updatedAt', 'discussion', 'historyTastes', 'journalLockSalt', 'journalLockVerifier'])
         && data.draft is string
         && data.draft.size() <= 100000
         && data.updatedAt is number
@@ -67,7 +69,11 @@ service cloud.firestore {
         && (!('historyTastes' in data)
           || (data.historyTastes is int
             && data.historyTastes >= 0
-            && data.historyTastes <= 100));
+            && data.historyTastes <= 100))
+        && (!('journalLockSalt' in data)
+          || (data.journalLockSalt is string && data.journalLockSalt.size() <= 256))
+        && (!('journalLockVerifier' in data)
+          || (data.journalLockVerifier is string && data.journalLockVerifier.size() <= 512));
     }
 
     function isValidNugget(data) {

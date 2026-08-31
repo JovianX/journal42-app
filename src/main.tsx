@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import { AuthProvider } from './auth/AuthProvider.tsx'
+import { JournalLockProvider } from './auth/JournalLockProvider.tsx'
 import './index.css'
 import App from './App.tsx'
 
@@ -12,7 +13,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <App />
+        <JournalLockProvider>
+          <App />
+        </JournalLockProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

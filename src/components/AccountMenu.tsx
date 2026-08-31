@@ -9,6 +9,8 @@ type AccountMenuProps = {
   photoURL: string | null
   signingOut?: boolean
   onSignOut?: () => void
+  onLockJournal?: () => void
+  showLockJournal?: boolean
 }
 
 export default function AccountMenu({
@@ -17,6 +19,8 @@ export default function AccountMenu({
   photoURL,
   signingOut = false,
   onSignOut,
+  onLockJournal,
+  showLockJournal = false,
 }: AccountMenuProps) {
   const [open, setOpen] = useState(false)
   const [photoFailed, setPhotoFailed] = useState(false)
@@ -129,6 +133,19 @@ export default function AccountMenu({
           >
             Settings
           </Link>
+          {showLockJournal && onLockJournal ? (
+            <button
+              type="button"
+              className="account-menu-item"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                onLockJournal()
+              }}
+            >
+              Lock journal
+            </button>
+          ) : null}
           {onSignOut ? (
             <button
               type="button"

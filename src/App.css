@@ -3682,6 +3682,11 @@ button.reflection-orb {
   cursor: not-allowed;
 }
 
+.journal-unlock-signout {
+  display: block;
+  margin: 1.25rem auto 0;
+}
+
 .auth-submit {
   width: 100%;
   text-align: center;

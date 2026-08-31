@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { useJournalLock } from '../auth/useJournalLock'
 import AuthLoading from '../auth/AuthLoading'
 import {
   billingStatusLine,
@@ -30,6 +31,13 @@ export default function Settings() {
   const { billing, ready: billingReady } = useBilling(user?.uid)
   const { usage } = useAiUsage(user?.uid)
   const install = useAppInstall()
+  const {
+    lockEnabled,
+    setupLock,
+    removeLock,
+    changePasscode,
+    lock,
+  } = useJournalLock()
 
   const [photoFailed, setPhotoFailed] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
@@ -48,6 +56,18 @@ export default function Settings() {
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [lockBusy, setLockBusy] = useState(false)
+  const [lockError, setLockError] = useState<string | null>(null)
+  const [lockNotice, setLockNotice] = useState<string | null>(null)
+  const [showLockSetupForm, setShowLockSetupForm] = useState(false)
+  const [showLockChangeForm, setShowLockChangeForm] = useState(false)
+  const [showLockRemoveForm, setShowLockRemoveForm] = useState(false)
+  const [newPasscode, setNewPasscode] = useState('')
+  const [confirmPasscode, setConfirmPasscode] = useState('')
+  const [currentPasscode, setCurrentPasscode] = useState('')
+  const [nextPasscode, setNextPasscode] = useState('')
+  const [confirmNextPasscode, setConfirmNextPasscode] = useState('')
+  const [removePasscode, setRemovePasscode] = useState('')
 
   useEffect(() => {
     document.title = 'Journal42 · Account'
@@ -112,6 +132,103 @@ export default function Settings() {
       await signOut()
     } catch {
       setSigningOut(false)
+    }
+  }
+
+  function resetLockForms() {
+    setShowLockSetupForm(false)
+    setShowLockChangeForm(false)
+    setShowLockRemoveForm(false)
+    setNewPasscode('')
+    setConfirmPasscode('')
+    setCurrentPasscode('')
+    setNextPasscode('')
+    setConfirmNextPasscode('')
+    setRemovePasscode('')
+    setLockError(null)
+  }
+
+  async function onSetupLock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (lockBusy) return
+    if (newPasscode.length < 4) {
+      setLockError('Passcode should be at least 4 characters.')
+      return
+    }
+    if (newPasscode !== confirmPasscode) {
+      setLockError('Passcodes do not match.')
+      return
+    }
+
+    setLockBusy(true)
+    setLockError(null)
+    setLockNotice(null)
+    try {
+      await setupLock(newPasscode)
+      setLockNotice('Journal lock enabled.')
+      resetLockForms()
+    } catch (error) {
+      setLockError(
+        error instanceof Error ? error.message : 'Could not enable journal lock.',
+      )
+    } finally {
+      setLockBusy(false)
+    }
+  }
+
+  async function onChangePasscode(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (lockBusy) return
+    if (nextPasscode.length < 4) {
+      setLockError('New passcode should be at least 4 characters.')
+      return
+    }
+    if (nextPasscode !== confirmNextPasscode) {
+      setLockError('New passcodes do not match.')
+      return
+    }
+
+    setLockBusy(true)
+    setLockError(null)
+    setLockNotice(null)
+    try {
+      const result = await changePasscode(currentPasscode, nextPasscode)
+      if (result === 'wrong-passcode') {
+        setLockError('Current passcode is incorrect.')
+        return
+      }
+      setLockNotice('Passcode updated.')
+      resetLockForms()
+    } catch (error) {
+      setLockError(
+        error instanceof Error ? error.message : 'Could not update passcode.',
+      )
+    } finally {
+      setLockBusy(false)
+    }
+  }
+
+  async function onRemoveLock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (lockBusy) return
+
+    setLockBusy(true)
+    setLockError(null)
+    setLockNotice(null)
+    try {
+      const result = await removeLock(removePasscode)
+      if (result === 'wrong-passcode') {
+        setLockError('Passcode is incorrect.')
+        return
+      }
+      setLockNotice('Journal lock removed.')
+      resetLockForms()
+    } catch (error) {
+      setLockError(
+        error instanceof Error ? error.message : 'Could not remove journal lock.',
+      )
+    } finally {
+      setLockBusy(false)
     }
   }
 
@@ -316,6 +433,194 @@ export default function Settings() {
             </section>
 
             <nav className="settings-actions" aria-label="Account actions">
+              <div className="settings-action">
+                <div className="settings-action-row">
+                  <div className="settings-action-copy">
+                    <p className="settings-action-label">Journal lock</p>
+                    <p className="settings-action-hint">
+                      {lockEnabled
+                        ? 'Passcode required to read entries'
+                        : 'Encrypt entries behind a passcode'}
+                    </p>
+                  </div>
+                  <div className="settings-action-links">
+                    {lockEnabled ? (
+                      <>
+                        <button
+                          type="button"
+                          className="settings-inline-link"
+                          onClick={() => {
+                            resetLockForms()
+                            setShowLockChangeForm((open) => !open)
+                            setShowLockRemoveForm(false)
+                          }}
+                          disabled={lockBusy || signingOut}
+                        >
+                          {showLockChangeForm ? 'Cancel' : 'Change'}
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-inline-link"
+                          onClick={() => {
+                            resetLockForms()
+                            setShowLockRemoveForm((open) => !open)
+                            setShowLockChangeForm(false)
+                          }}
+                          disabled={lockBusy || signingOut}
+                        >
+                          {showLockRemoveForm ? 'Cancel' : 'Remove'}
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-inline-link"
+                          onClick={() => lock()}
+                          disabled={lockBusy || signingOut}
+                        >
+                          Lock now
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="settings-inline-link"
+                        onClick={() => {
+                          resetLockForms()
+                          setShowLockSetupForm((open) => !open)
+                        }}
+                        disabled={lockBusy || signingOut}
+                      >
+                        {showLockSetupForm ? 'Cancel' : 'Enable'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {showLockSetupForm ? (
+                  <form className="settings-form" onSubmit={onSetupLock}>
+                    <label className="settings-field">
+                      <span>Passcode</span>
+                      <input
+                        type="password"
+                        name="journal-passcode"
+                        autoComplete="new-password"
+                        value={newPasscode}
+                        onChange={(event) => setNewPasscode(event.target.value)}
+                        disabled={lockBusy || signingOut}
+                        required
+                        minLength={4}
+                      />
+                    </label>
+                    <label className="settings-field">
+                      <span>Confirm</span>
+                      <input
+                        type="password"
+                        name="journal-passcode-confirm"
+                        autoComplete="new-password"
+                        value={confirmPasscode}
+                        onChange={(event) => setConfirmPasscode(event.target.value)}
+                        disabled={lockBusy || signingOut}
+                        required
+                        minLength={4}
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="btn-primary"
+                      disabled={lockBusy || signingOut}
+                    >
+                      {lockBusy ? 'Saving…' : 'Enable lock'}
+                    </button>
+                  </form>
+                ) : null}
+
+                {showLockChangeForm ? (
+                  <form className="settings-form" onSubmit={onChangePasscode}>
+                    <label className="settings-field">
+                      <span>Current</span>
+                      <input
+                        type="password"
+                        name="journal-passcode-current"
+                        autoComplete="current-password"
+                        value={currentPasscode}
+                        onChange={(event) => setCurrentPasscode(event.target.value)}
+                        disabled={lockBusy || signingOut}
+                        required
+                        minLength={4}
+                      />
+                    </label>
+                    <label className="settings-field">
+                      <span>New</span>
+                      <input
+                        type="password"
+                        name="journal-passcode-new"
+                        autoComplete="new-password"
+                        value={nextPasscode}
+                        onChange={(event) => setNextPasscode(event.target.value)}
+                        disabled={lockBusy || signingOut}
+                        required
+                        minLength={4}
+                      />
+                    </label>
+                    <label className="settings-field">
+                      <span>Confirm</span>
+                      <input
+                        type="password"
+                        name="journal-passcode-new-confirm"
+                        autoComplete="new-password"
+                        value={confirmNextPasscode}
+                        onChange={(event) => setConfirmNextPasscode(event.target.value)}
+                        disabled={lockBusy || signingOut}
+                        required
+                        minLength={4}
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="btn-primary"
+                      disabled={lockBusy || signingOut}
+                    >
+                      {lockBusy ? 'Updating…' : 'Update passcode'}
+                    </button>
+                  </form>
+                ) : null}
+
+                {showLockRemoveForm ? (
+                  <form className="settings-form" onSubmit={onRemoveLock}>
+                    <label className="settings-field">
+                      <span>Passcode</span>
+                      <input
+                        type="password"
+                        name="journal-passcode-remove"
+                        autoComplete="current-password"
+                        value={removePasscode}
+                        onChange={(event) => setRemovePasscode(event.target.value)}
+                        disabled={lockBusy || signingOut}
+                        required
+                        minLength={4}
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      className="btn-primary"
+                      disabled={lockBusy || signingOut}
+                    >
+                      {lockBusy ? 'Removing…' : 'Remove lock'}
+                    </button>
+                  </form>
+                ) : null}
+
+                {lockNotice ? (
+                  <p className="settings-flash" role="status">
+                    {lockNotice}
+                  </p>
+                ) : null}
+                {lockError ? (
+                  <p className="settings-flash is-error" role="alert">
+                    {lockError}
+                  </p>
+                ) : null}
+              </div>
+
               {hasPasswordProvider ? (
                 <div className="settings-action">
                   <div className="settings-action-row">

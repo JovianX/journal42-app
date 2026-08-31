@@ -29,7 +29,7 @@ Items are not strict priority unless noted. Surfaces: `[app]` `[api]` `[website]
 
 ## Later
 
-- [ ] Encrypt journal behind a passcode (client-side; readable only after unlock) `[app]`
+- [x] Encrypt journal behind a passcode (client-side; readable only after unlock) `[app]`
 - [ ] Dedicated History surface or calendar jump once volume grows `[app]`
 - [ ] Apple / GitHub sign-in only if still advertised on marketing `[app]` `[website]`
 - [ ] Lightweight admin: plan lookup, refund notes, waitlist CRM `[api]`

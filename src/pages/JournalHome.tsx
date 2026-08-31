@@ -12,6 +12,7 @@ import type { User } from 'firebase/auth'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 import AccountMenu, { useAccountSignOut } from '../components/AccountMenu'
+import { useJournalLock } from '../auth/useJournalLock'
 import {
   requestReflection,
   toReflectionErrorMessage,
@@ -1096,6 +1097,7 @@ function NuggetItem({
 
 export default function JournalHome() {
   const { user } = useAuth()
+  const { lock, lockEnabled, unlocked } = useJournalLock()
   const { signingOut, onSignOut } = useAccountSignOut()
   const [searchParams, setSearchParams] = useSearchParams()
   const { billing, ready: billingReady } = useBilling(user?.uid)
@@ -1825,6 +1827,8 @@ export default function JournalHome() {
           photoURL={user?.photoURL ?? null}
           signingOut={signingOut}
           onSignOut={onSignOut}
+          showLockJournal={lockEnabled && unlocked}
+          onLockJournal={lock}
         />
       </header>
 
