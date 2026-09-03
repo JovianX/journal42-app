@@ -333,7 +333,18 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
       recognizer.setWords(true)
     }
 
+    // Ensure AudioContext is running (iOS requires resume inside user gesture)
+    if (mic.audioContext.state !== 'running') {
+      console.log('[vosk] AudioContext state:', mic.audioContext.state, '— resuming')
+      await mic.audioContext.resume()
+    }
+
     const source = mic.audioContext.createMediaStreamSource(mic.stream)
+
+    // Check that the mic track is actually live
+    const track = mic.stream.getAudioTracks()[0]
+    console.log('[vosk] mic track:', track?.label, 'enabled:', track?.enabled, 'readyState:', track?.readyState, 'muted:', track?.muted)
+
     const processor = mic.audioContext.createScriptProcessor(4096, 1, 1)
 
     recognizer.on('result', (message) => {
@@ -370,6 +381,17 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     let levelFrame = 0
     let hearingVoice = false
     let smoothedLevel = 0
+    // Diagnostic: use AnalyserNode to verify source has real audio
+    const analyser = mic.audioContext.createAnalyser()
+    analyser.fftSize = 2048
+    source.connect(analyser)
+    setTimeout(() => {
+      const buf = new Float32Array(analyser.fftSize)
+      analyser.getFloatTimeDomainData(buf)
+      const aRms = computeRms(buf)
+      console.log('[vosk] analyser RMS after 500ms:', aRms.toFixed(6))
+    }, 500)
+
     let audioFrameCount = 0
     processor.onaudioprocess = (event) => {
       if (!listeningRef.current) return
