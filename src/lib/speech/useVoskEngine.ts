@@ -312,6 +312,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     modelRef.current = model
     loadedKeyRef.current = voskSettingsKey(activeSettings)
 
+    console.log('[vosk] start() called, model:', !!model)
     void Promise.resolve(stop())
 
     let mic: Awaited<ReturnType<typeof openMicrophone>>
@@ -336,6 +337,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     const processor = mic.audioContext.createScriptProcessor(4096, 1, 1)
 
     recognizer.on('result', (message) => {
+      console.log('[vosk] result event:', message.event, (message as any).result)
       if (message.event !== 'result') return
       const text = message.result.text?.trim()
       if (!text) return
@@ -352,6 +354,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     recognizer.on('partialresult', (message) => {
       if (message.event !== 'partialresult') return
       const partial = message.result.partial?.trim() ?? ''
+      if (partial) console.log('[vosk] partial:', partial)
       interimRef.current = partial
 
       setSnapshot((current) => ({
@@ -367,10 +370,16 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     let levelFrame = 0
     let hearingVoice = false
     let smoothedLevel = 0
+    let audioFrameCount = 0
     processor.onaudioprocess = (event) => {
       if (!listeningRef.current) return
       try {
         const input = event.inputBuffer.getChannelData(0)
+        audioFrameCount += 1
+        if (audioFrameCount <= 3) {
+          const rms = computeRms(input)
+          console.log(`[vosk] audio frame #${audioFrameCount}, rms=${rms.toFixed(6)}, samples=${input.length}, sampleRate=${mic.sampleRate}`)
+        }
         levelFrame += 1
         if (levelFrame % 3 === 0) {
           const rms = computeRms(input)
@@ -408,6 +417,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
 
     source.connect(processor)
     processor.connect(mic.audioContext.destination)
+    console.log('[vosk] audio pipeline connected, audioContext.state:', mic.audioContext.state)
 
     micRef.current = mic
     processorRef.current = processor
