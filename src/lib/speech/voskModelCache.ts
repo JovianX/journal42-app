@@ -13,37 +13,15 @@ type CacheEntry = {
   model: Model
 }
 
-export type VoiceWarmPhase =
-  | 'idle'
-  | 'queued'
-  | 'vosk'
-  | 'punctuation'
-  | 'ready'
-  | 'error'
-  | 'skipped'
-
-export type VoiceWarmSnapshot = {
-  phase: VoiceWarmPhase
-  error: string | null
-}
-
 type Listener = () => void
 
 let cache: CacheEntry | null = null
 let inflight: { key: string; promise: Promise<Model> } | null = null
 let warmStarted = false
-let warmPhase: VoiceWarmPhase = 'idle'
-let warmError: string | null = null
 const listeners = new Set<Listener>()
 
 function notify() {
   for (const listener of listeners) listener()
-}
-
-function setWarmPhase(phase: VoiceWarmPhase, error: string | null = null) {
-  warmPhase = phase
-  warmError = error
-  notify()
 }
 
 export function subscribeVoskModelCache(listener: Listener) {
@@ -51,10 +29,6 @@ export function subscribeVoskModelCache(listener: Listener) {
   return () => {
     listeners.delete(listener)
   }
-}
-
-export function getVoiceWarmSnapshot(): VoiceWarmSnapshot {
-  return { phase: warmPhase, error: warmError }
 }
 
 export function getCachedVoskModel(settings: SpeechLabSettings): Model | null {
@@ -73,10 +47,6 @@ export async function ensureVoskModel(
     cache.model.terminate()
     cache = null
     notify()
-  }
-
-  if (warmPhase === 'idle' || warmPhase === 'queued') {
-    setWarmPhase('vosk')
   }
 
   const promise = (async () => {
@@ -114,25 +84,15 @@ export function releaseVoskModel(settings?: SpeechLabSettings) {
 export function warmVoiceModelsInBackground(
   settings: SpeechLabSettings = loadSpeechLabSettings(),
 ) {
-  if (!shouldWarmVoiceModels()) {
-    setWarmPhase('skipped')
-    return
-  }
+  if (!shouldWarmVoiceModels()) return
 
-  setWarmPhase('vosk')
   void ensureVoskModel(settings)
-    .then(async () => {
-      if (settings.vosk.punctuation) {
-        setWarmPhase('punctuation')
-        await preloadPunctuationModel()
-      }
-      setWarmPhase('ready')
+    .then(() => {
+      if (!settings.vosk.punctuation) return
+      return preloadPunctuationModel()
     })
-    .catch((error: unknown) => {
-      setWarmPhase(
-        'error',
-        error instanceof Error ? error.message : 'Voice download failed',
-      )
+    .catch(() => {
+      /* Best-effort warm; mic path surfaces real errors. */
     })
 }
 
@@ -141,12 +101,8 @@ export function scheduleVoiceModelWarmup(
   settings: SpeechLabSettings = loadSpeechLabSettings(),
 ) {
   if (warmStarted) return () => {}
-  if (!shouldWarmVoiceModels()) {
-    setWarmPhase('skipped')
-    return () => {}
-  }
+  if (!shouldWarmVoiceModels()) return () => {}
 
-  setWarmPhase('queued')
   return scheduleIdleWork(() => {
     if (warmStarted) return
     warmStarted = true

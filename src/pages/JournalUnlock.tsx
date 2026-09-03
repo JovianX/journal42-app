@@ -1,7 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useAuth } from '../auth/useAuth'
 import { useJournalLock } from '../auth/useJournalLock'
-import VoiceWarmStatusText from '../components/VoiceWarmStatusText'
 
 export default function JournalUnlock() {
   const { signOut } = useAuth()
@@ -80,8 +79,6 @@ export default function JournalUnlock() {
             {busy ? 'Unlocking…' : 'Unlock'}
           </button>
         </form>
-
-        <VoiceWarmStatusText className="voice-warm-status-unlock" />
 
         <button
           type="button"

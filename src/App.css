@@ -4475,40 +4475,6 @@ button.reflection-orb {
   background: rgba(11, 122, 108, 0.08);
 }
 
-.voice-warm-status {
-  margin: 0;
-  max-width: 14rem;
-  font-size: 0.72rem;
-  font-weight: 550;
-  letter-spacing: 0.02em;
-  line-height: 1.3;
-  color: rgba(58, 69, 80, 0.72);
-  text-align: right;
-}
-
-.voice-warm-status.is-ready {
-  color: rgba(11, 122, 108, 0.78);
-}
-
-.voice-warm-status.is-error {
-  color: #b42318;
-}
-
-.voice-warm-status-composer {
-  margin-right: 0.15rem;
-}
-
-.voice-warm-status-unlock {
-  margin: 0.85rem 0 0;
-  max-width: none;
-  text-align: center;
-  color: rgba(58, 69, 80, 0.62);
-}
-
-.voice-warm-status-unlock.is-ready {
-  color: rgba(11, 122, 108, 0.72);
-}
-
 .voice-compose-saved {
   max-width: 42rem;
   padding: 0.9rem 1rem;
