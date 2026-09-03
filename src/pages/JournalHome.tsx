@@ -51,6 +51,7 @@ import {
 import AuthLoading from '../auth/AuthLoading'
 import VoiceComposeAudioSurface from '../components/VoiceComposeAudioSurface'
 import { VoiceComposeMicIcon } from '../components/VoiceComposeMicIcon'
+import VoiceWarmStatusText from '../components/VoiceWarmStatusText'
 import { loadSpeechLabSettings } from '../lib/speech/settings'
 import { useVoiceCompose } from '../lib/speech/useVoiceCompose'
 import { useVoskEngine } from '../lib/speech/useVoskEngine'
@@ -2006,6 +2007,9 @@ export default function JournalHome() {
                           <span className="proofread-switch-thumb" />
                         </span>
                       </button>
+                    ) : null}
+                    {!voiceCompose.voiceMode ? (
+                      <VoiceWarmStatusText className="voice-warm-status-composer" />
                     ) : null}
                     <button
                       type="button"
