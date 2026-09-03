@@ -46,6 +46,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
   const finalRef = useRef('')
   const interimRef = useRef('')
   const punctuatingRef = useRef(false)
+  const loadPromiseRef = useRef<Promise<boolean> | null>(null)
 
   const modelKey = useMemo(() => voskSettingsKey(settings), [settings])
   settingsRef.current = settings
@@ -159,59 +160,74 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
         status: 'ready',
         statusDetail: 'Model already loaded.',
       }))
+      if (activeSettings.vosk.punctuation) {
+        void preloadPunctuationModel().catch(() => {})
+      }
       return true
     }
 
-    modelRef.current?.terminate()
-    modelRef.current = null
-    loadedKeyRef.current = null
+    if (loadPromiseRef.current) return loadPromiseRef.current
 
-    const started = performance.now()
-    setSnapshot((current) => ({
-      ...current,
-      status: 'loading',
-      error: null,
-      statusDetail: `Downloading Vosk ${activeSettings.vosk.modelTier} model…`,
-    }))
+    const loadPromise = (async () => {
+      modelRef.current?.terminate()
+      modelRef.current = null
+      loadedKeyRef.current = null
 
-    try {
-      const { createModel } = await import('vosk-browser')
-      const model = await createModel(voskModelUrl(activeSettings.vosk.modelTier))
-
-      modelRef.current = model
-      loadedKeyRef.current = nextKey
-      setRequiresReload(false)
-      const loadMs = Math.round(performance.now() - started)
+      const started = performance.now()
       setSnapshot((current) => ({
         ...current,
-        status: 'ready',
-        loadMs,
-        statusDetail: `Loaded ${activeSettings.vosk.modelTier} in ${(loadMs / 1000).toFixed(1)}s.`,
+        status: 'loading',
+        error: null,
+        statusDetail: `Downloading Vosk ${activeSettings.vosk.modelTier} model…`,
       }))
 
-      // Punctuation is optional polish (~67MB). Never block listening on it —
-      // cold prod loads often stall here while local already has it cached.
-      if (activeSettings.vosk.punctuation) {
-        void preloadPunctuationModel().catch(() => {
-          /* restorePunctuation falls back to basicPunctuation */
-        })
+      try {
+        const { createModel } = await import('vosk-browser')
+        const model = await createModel(voskModelUrl(activeSettings.vosk.modelTier))
+
+        modelRef.current = model
+        loadedKeyRef.current = nextKey
+        setRequiresReload(false)
+        const loadMs = Math.round(performance.now() - started)
+        setSnapshot((current) => ({
+          ...current,
+          status: 'ready',
+          loadMs,
+          statusDetail: `Loaded ${activeSettings.vosk.modelTier} in ${(loadMs / 1000).toFixed(1)}s.`,
+        }))
+
+        // Punctuation (~67MB) warms in parallel; never blocks listening.
+        if (activeSettings.vosk.punctuation) {
+          void preloadPunctuationModel().catch(() => {
+            /* restorePunctuation falls back to basicPunctuation */
+          })
+        }
+
+        return true
+      } catch (error) {
+        const tier = activeSettings.vosk.modelTier
+        setSnapshot((current) => ({
+          ...current,
+          status: 'error',
+          error:
+            tier === 'large'
+              ? 'Large Vosk model is not available from the public CDN yet. Switch back to Small.'
+              : error instanceof Error
+                ? error.message
+                : 'Could not load Vosk model.',
+          statusDetail: 'Model load failed.',
+        }))
+        return false
       }
+    })()
 
-      return true
-    } catch (error) {
-      const tier = activeSettings.vosk.modelTier
-      setSnapshot((current) => ({
-        ...current,
-        status: 'error',
-        error:
-          tier === 'large'
-            ? 'Large Vosk model is not available from the public CDN yet. Switch back to Small.'
-            : error instanceof Error
-              ? error.message
-              : 'Could not load Vosk model.',
-        statusDetail: 'Model load failed.',
-      }))
-      return false
+    loadPromiseRef.current = loadPromise
+    try {
+      return await loadPromise
+    } finally {
+      if (loadPromiseRef.current === loadPromise) {
+        loadPromiseRef.current = null
+      }
     }
   }, [])
 

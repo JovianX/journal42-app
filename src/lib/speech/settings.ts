@@ -68,9 +68,7 @@ export const DEFAULT_SPEECH_LAB_SETTINGS: SpeechLabSettings = {
     modelTier: 'small',
     resampling: 'quality',
     wordTimestamps: false,
-    // Off by default: the punctuation ONNX is ~67MB and was blocking first
-    // listens in production (local usually already had it cached).
-    punctuation: false,
+    punctuation: true,
   },
 }
 

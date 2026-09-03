@@ -247,7 +247,7 @@ export default function VoiceLabSettingsPanel({
           />
           <ToggleRow
             label="Restore punctuation"
-            description="Runs a small local DistilBERT model after each phrase (~70 MB)."
+            description="Local DistilBERT after each phrase (~67 MB). Downloaded in the background with Vosk."
             checked={settings.vosk.punctuation}
             onChange={(checked) => patchVosk({ punctuation: checked })}
           />
