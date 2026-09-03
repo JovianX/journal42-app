@@ -647,6 +647,34 @@ a.account-menu-trigger.profile-avatar-link {
   cursor: not-allowed;
 }
 
+.settings-field-inline {
+  margin: 0;
+  min-width: 9.5rem;
+}
+
+.settings-select {
+  width: 100%;
+  min-width: 9.5rem;
+  max-width: 14rem;
+  font: inherit;
+  font-size: 0.84rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(18, 24, 31, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  outline: none;
+}
+
+.settings-select:focus {
+  border-color: rgba(11, 122, 108, 0.5);
+}
+
+.settings-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .settings-form-actions {
   display: flex;
   flex-wrap: wrap;

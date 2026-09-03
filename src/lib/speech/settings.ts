@@ -76,6 +76,20 @@ export const DEFAULT_SPEECH_LAB_SETTINGS: SpeechLabSettings = {
 
 const STORAGE_KEY = 'j42-voice-lab-settings'
 
+type SettingsListener = () => void
+const listeners = new Set<SettingsListener>()
+
+export function subscribeSpeechLabSettings(listener: SettingsListener) {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
+function notifySpeechLabSettingsChanged() {
+  for (const listener of listeners) listener()
+}
+
 export function loadSpeechLabSettings(): SpeechLabSettings {
   if (typeof window === 'undefined') return DEFAULT_SPEECH_LAB_SETTINGS
   try {
@@ -106,6 +120,17 @@ export function loadSpeechLabSettings(): SpeechLabSettings {
 export function saveSpeechLabSettings(settings: SpeechLabSettings) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
+  notifySpeechLabSettingsChanged()
+}
+
+export function patchSpeechLabSharedSettings(
+  patch: Partial<SpeechLabSettings['shared']>,
+) {
+  const current = loadSpeechLabSettings()
+  saveSpeechLabSettings({
+    ...current,
+    shared: { ...current.shared, ...patch },
+  })
 }
 
 export function whisperModelId(size: WhisperModelSize) {

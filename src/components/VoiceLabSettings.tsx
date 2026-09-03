@@ -1,47 +1,5 @@
-import { useEffect, useState } from 'react'
 import type { SpeechLabSettings } from '../lib/speech/settings'
-
-type AudioDevice = { deviceId: string; label: string }
-
-function useAudioDevices(): AudioDevice[] {
-  const [devices, setDevices] = useState<AudioDevice[]>([])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function enumerate() {
-      try {
-        // Prompt permission so labels are available
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        stream.getTracks().forEach((t) => t.stop())
-
-        const all = await navigator.mediaDevices.enumerateDevices()
-        if (cancelled) return
-        setDevices(
-          all
-            .filter((d) => d.kind === 'audioinput')
-            .map((d) => ({
-              deviceId: d.deviceId,
-              label: d.label || `Mic ${d.deviceId.slice(0, 6)}`,
-            })),
-        )
-      } catch {
-        // Permission denied — leave empty
-      }
-    }
-
-    void enumerate()
-
-    const onChange = () => void enumerate()
-    navigator.mediaDevices.addEventListener('devicechange', onChange)
-    return () => {
-      cancelled = true
-      navigator.mediaDevices.removeEventListener('devicechange', onChange)
-    }
-  }, [])
-
-  return devices
-}
+import { useAudioDevices } from '../lib/speech/useAudioDevices'
 
 type VoiceLabSettingsProps = {
   settings: SpeechLabSettings
@@ -143,7 +101,7 @@ export default function VoiceLabSettingsPanel({
       <div className="voice-lab-settings-grid">
         <div className="voice-lab-settings-group">
           <h3 className="voice-lab-settings-group-title">Shared microphone</h3>
-          {audioDevices.length > 1 && (
+          {audioDevices.length > 0 && (
             <SelectRow
               label="Input device"
               description="Choose which microphone to use."

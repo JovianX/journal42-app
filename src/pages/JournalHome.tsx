@@ -51,7 +51,7 @@ import {
 import AuthLoading from '../auth/AuthLoading'
 import VoiceComposeAudioSurface from '../components/VoiceComposeAudioSurface'
 import { VoiceComposeMicIcon } from '../components/VoiceComposeMicIcon'
-import { loadSpeechLabSettings } from '../lib/speech/settings'
+import { useSpeechLabSettings } from '../lib/speech/useSpeechLabSettings'
 import { useVoiceCompose } from '../lib/speech/useVoiceCompose'
 import { useVoskEngine } from '../lib/speech/useVoskEngine'
 
@@ -1128,7 +1128,7 @@ export default function JournalHome() {
   const [reflectionInvite, setReflectionInvite] = useState(false)
   const [composerInvite, setComposerInvite] = useState(false)
   const [now, setNow] = useState(() => Date.now())
-  const [speechSettings] = useState(loadSpeechLabSettings)
+  const [speechSettings] = useSpeechLabSettings()
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const voiceReplyRef = useRef<HTMLTextAreaElement>(null)
   const shouldRefocusReplyRef = useRef(false)

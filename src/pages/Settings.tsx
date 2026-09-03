@@ -18,6 +18,8 @@ import { deleteAccount } from '../lib/accountApi'
 import { openBillingPortal, startCheckout } from '../lib/billingApi'
 import { useAppInstall } from '../lib/useAppInstall'
 import { userFirstName, userInitials } from '../lib/userDisplay'
+import SettingsMicrophoneSelect from '../components/SettingsMicrophoneSelect'
+import { useSpeechLabSettings } from '../lib/speech/useSpeechLabSettings'
 
 export default function Settings() {
   const {
@@ -68,6 +70,7 @@ export default function Settings() {
   const [nextPasscode, setNextPasscode] = useState('')
   const [confirmNextPasscode, setConfirmNextPasscode] = useState('')
   const [removePasscode, setRemovePasscode] = useState('')
+  const [speechSettings, setSpeechSettings] = useSpeechLabSettings()
 
   useEffect(() => {
     document.title = 'Journal42 · Account'
@@ -619,6 +622,27 @@ export default function Settings() {
                     {lockError}
                   </p>
                 ) : null}
+              </div>
+
+              <div className="settings-action">
+                <div className="settings-action-row">
+                  <div className="settings-action-copy">
+                    <p className="settings-action-label">Microphone</p>
+                    <p className="settings-action-hint">
+                      Used for voice journaling
+                    </p>
+                  </div>
+                  <SettingsMicrophoneSelect
+                    value={speechSettings.shared.deviceId}
+                    onChange={(deviceId) =>
+                      setSpeechSettings({
+                        ...speechSettings,
+                        shared: { ...speechSettings.shared, deviceId },
+                      })
+                    }
+                    disabled={signingOut}
+                  />
+                </div>
               </div>
 
               {hasPasswordProvider ? (

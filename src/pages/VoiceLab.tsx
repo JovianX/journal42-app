@@ -3,11 +3,8 @@ import { Link } from 'react-router-dom'
 import VoiceComposeBox from '../components/VoiceComposeBox'
 import VoiceLabSettingsPanel from '../components/VoiceLabSettings'
 import { SPEECH_ENGINE_META } from '../lib/speech/meta'
-import {
-  loadSpeechLabSettings,
-  saveSpeechLabSettings,
-} from '../lib/speech/settings'
 import type { SpeechEngineController, SpeechEngineId } from '../lib/speech/types'
+import { useSpeechLabSettings } from '../lib/speech/useSpeechLabSettings'
 import { useVoskEngine } from '../lib/speech/useVoskEngine'
 import { useWebSpeechEngine } from '../lib/speech/useWebSpeechEngine'
 import { useWhisperEngine } from '../lib/speech/useWhisperEngine'
@@ -207,7 +204,7 @@ function EnginePanel({
 }
 
 export default function VoiceLab() {
-  const [settings, setSettings] = useState(loadSpeechLabSettings)
+  const [settings, setSettings] = useSpeechLabSettings()
   const webSpeech = useWebSpeechEngine()
   const whisper = useWhisperEngine(settings)
   const vosk = useVoskEngine(settings)
@@ -218,10 +215,6 @@ export default function VoiceLab() {
     whisper,
     vosk,
   }
-
-  useEffect(() => {
-    saveSpeechLabSettings(settings)
-  }, [settings])
 
   useEffect(() => {
     document.title = 'Journal42 · Voice input lab'
