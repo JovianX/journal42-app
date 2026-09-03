@@ -27,6 +27,7 @@ export type SpeechLabSettings = {
     autoGainControl: boolean
     noiseSuppression: boolean
     echoCancellation: boolean
+    deviceId: string // '' = system default
   }
   whisper: {
     modelSize: WhisperModelSize
@@ -52,6 +53,7 @@ export const DEFAULT_SPEECH_LAB_SETTINGS: SpeechLabSettings = {
     autoGainControl: false,
     noiseSuppression: true,
     echoCancellation: true,
+    deviceId: '',
   },
   whisper: {
     modelSize: 'tiny',

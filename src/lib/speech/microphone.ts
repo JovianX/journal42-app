@@ -9,12 +9,16 @@ export type MicrophoneSession = {
 export async function openMicrophone(
   audioSettings: SpeechLabSettings['shared'],
 ): Promise<MicrophoneSession> {
+  const audioConstraints: MediaTrackConstraints = {
+    echoCancellation: audioSettings.echoCancellation,
+    noiseSuppression: audioSettings.noiseSuppression,
+    autoGainControl: audioSettings.autoGainControl,
+  }
+  if (audioSettings.deviceId) {
+    audioConstraints.deviceId = { exact: audioSettings.deviceId }
+  }
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: audioSettings.echoCancellation,
-      noiseSuppression: audioSettings.noiseSuppression,
-      autoGainControl: audioSettings.autoGainControl,
-    },
+    audio: audioConstraints,
   })
 
   const audioContext = new AudioContext()
