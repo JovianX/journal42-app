@@ -49,6 +49,11 @@ import {
   readLandingDraft,
 } from '../lib/landingDraft'
 import AuthLoading from '../auth/AuthLoading'
+import VoiceComposeAudioSurface from '../components/VoiceComposeAudioSurface'
+import { VoiceComposeMicIcon } from '../components/VoiceComposeMicIcon'
+import { loadSpeechLabSettings } from '../lib/speech/settings'
+import { useVoiceCompose } from '../lib/speech/useVoiceCompose'
+import { useVoskEngine } from '../lib/speech/useVoskEngine'
 
 const SHOW_PROOFREAD = false
 const DRAFT_PERSIST_MS = 400
@@ -1123,6 +1128,7 @@ export default function JournalHome() {
   const [reflectionInvite, setReflectionInvite] = useState(false)
   const [composerInvite, setComposerInvite] = useState(false)
   const [now, setNow] = useState(() => Date.now())
+  const [speechSettings] = useState(loadSpeechLabSettings)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const voiceReplyRef = useRef<HTMLTextAreaElement>(null)
   const shouldRefocusReplyRef = useRef(false)
@@ -1196,6 +1202,13 @@ export default function JournalHome() {
     setDraft(value)
     scheduleDraftPersist(value)
   }
+
+  const speechEngine = useVoskEngine(speechSettings)
+  const voiceCompose = useVoiceCompose(speechEngine, {
+    value: draft,
+    onChange: onDraftChange,
+    focusInput: () => inputRef.current?.focus({ preventScroll: true }),
+  })
   const [collapsedDays, setCollapsedDays] = useState<Record<string, boolean>>({})
   const showVoiceComposer =
     voiceReplyOpen &&
@@ -1477,6 +1490,7 @@ export default function JournalHome() {
   }, [draft, user])
 
   useLayoutEffect(() => {
+    if (voiceCompose.voiceMode) return
     const frame = composerFrameRef.current
     const previousHeight = frame?.offsetHeight ?? 0
     autosizeTextarea(inputRef.current)
@@ -1486,7 +1500,7 @@ export default function JournalHome() {
       previousHeight,
       composerGapRef,
     )
-  }, [draft, showReflectionOrb])
+  }, [draft, showReflectionOrb, voiceCompose.voiceMode])
 
   useLayoutEffect(() => {
     if (!showVoiceComposer || !voicePanelOpen) return
@@ -1703,6 +1717,10 @@ export default function JournalHome() {
     const text = draft.trim()
     if (!text || !user) return
 
+    if (voiceCompose.voiceMode) {
+      void voiceCompose.exitVoiceMode(false)
+    }
+
     const discussion = persistableDiscussion(voiceThread)
     const nugget: Nugget = {
       id: createId(),
@@ -1847,41 +1865,69 @@ export default function JournalHome() {
           <h1 className="journal-prompt">Get it out of your head.</h1>
           <p className="journal-hint">Start with whatever is loudest.</p>
 
-          <div className={`composer-stack${voicePanelOpen ? ' has-voice' : ''}`}>
+          <div className={`composer-stack${voicePanelOpen ? ' has-voice' : ''}${voiceCompose.voiceMode ? ' is-voice-input' : ''}`}>
             <form
               ref={composerFrameRef}
-              className={`nugget-composer-frame${sending ? ' is-sending' : ''}${composerInvite ? ' is-inviting' : ''}`}
+              className={`nugget-composer-frame voice-compose-frame${sending ? ' is-sending' : ''}${composerInvite ? ' is-inviting' : ''}${voiceCompose.voiceMode ? ' is-voice' : ''}${voiceCompose.isListening ? ' is-listening' : ''}${voiceCompose.hearingVoice ? ' is-hearing' : ''}`}
               onSubmit={(event) => {
                 event.preventDefault()
+                if (voiceCompose.voiceMode) return
                 dropNugget()
               }}
+              style={
+                voiceCompose.voiceMode
+                  ? {
+                      ['--voice-level' as string]: String(
+                        0.55 + voiceCompose.level * 0.4,
+                      ),
+                    }
+                  : undefined
+              }
             >
-              <div ref={composerFaceRef} className="nugget-composer-face" aria-hidden="true" />
-              <div className="nugget-composer">
+              <div
+                ref={composerFaceRef}
+                className="nugget-composer-face voice-compose-face"
+                aria-hidden="true"
+              />
+              <div className="nugget-composer voice-compose-inner">
                 <label className="sr-only" htmlFor="nugget-input">
                   Write a thought
                 </label>
-                <div className="nugget-composer-body">
-                  <textarea
-                    id="nugget-input"
-                    ref={inputRef}
-                    className="nugget-input"
-                    value={draft}
-                    onChange={(event) => onDraftChange(event.target.value)}
-                    onFocus={() => {
-                      if (voiceReplyOpen || voiceReply) releaseReplyFocus()
-                    }}
-                    onKeyDown={onComposerKeyDown}
-                    placeholder="What's rattling around up there?"
-                    rows={1}
-                    autoFocus
-                  />
+                <div
+                  className={`nugget-composer-body voice-compose-surface${voiceCompose.voiceMode ? ' is-voice' : ' is-text'}`}
+                >
+                  {voiceCompose.voiceMode ? (
+                    <VoiceComposeAudioSurface
+                      hearingVoice={voiceCompose.hearingVoice}
+                      isLoading={voiceCompose.isLoading}
+                      isListening={voiceCompose.isListening}
+                      hint={voiceCompose.hint}
+                      recentWords={voiceCompose.recentWords}
+                      error={voiceCompose.error}
+                      onStop={() => void voiceCompose.toggleVoiceMode()}
+                    />
+                  ) : (
+                    <textarea
+                      id="nugget-input"
+                      ref={inputRef}
+                      className="nugget-input"
+                      value={draft}
+                      onChange={(event) => onDraftChange(event.target.value)}
+                      onFocus={() => {
+                        if (voiceReplyOpen || voiceReply) releaseReplyFocus()
+                      }}
+                      onKeyDown={onComposerKeyDown}
+                      placeholder="What's rattling around up there?"
+                      rows={1}
+                      autoFocus
+                    />
+                  )}
                 </div>
                 <div
-                  className={`nugget-composer-bar nugget-composer-bar-sizer${SHOW_PROOFREAD ? ' has-proofread' : ''}${showReflectionOrb ? ' has-orb' : ''}`}
+                  className={`nugget-composer-bar nugget-composer-bar-sizer${SHOW_PROOFREAD ? ' has-proofread' : ''}${showReflectionOrb && !voiceCompose.voiceMode ? ' has-orb' : ''}`}
                   aria-hidden="true"
                 >
-                  {showReflectionOrb ? (
+                  {showReflectionOrb && !voiceCompose.voiceMode ? (
                     <span className="reflection-invite" aria-hidden="true">
                       <span className="reflection-orb">
                         <span className="reflection-orb-aura" />
@@ -1900,6 +1946,15 @@ export default function JournalHome() {
                         </span>
                       </div>
                     ) : null}
+                    <button
+                      type="button"
+                      className="btn-ghost btn-icon-only voice-compose-mic"
+                      tabIndex={-1}
+                      disabled
+                      aria-hidden="true"
+                    >
+                      <VoiceComposeMicIcon active={false} />
+                    </button>
                     <button type="button" className="btn-primary btn-icon-only" tabIndex={-1} disabled>
                       <svg className="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
                         <path
@@ -1915,11 +1970,14 @@ export default function JournalHome() {
                   </div>
                 </div>
               </div>
-              <div ref={composerBarDockRef} className="nugget-composer-bar-dock">
+              <div
+                ref={composerBarDockRef}
+                className={`nugget-composer-bar-dock voice-compose-bar-dock${voiceCompose.voiceMode ? ' is-voice' : ''}`}
+              >
                 <div
-                  className={`nugget-composer-bar${SHOW_PROOFREAD ? ' has-proofread' : ''}${showReflectionOrb ? ' has-orb' : ''}`}
+                  className={`nugget-composer-bar${SHOW_PROOFREAD ? ' has-proofread' : ''}${showReflectionOrb && !voiceCompose.voiceMode ? ' has-orb' : ''}`}
                 >
-                  {showReflectionOrb ? (
+                  {showReflectionOrb && !voiceCompose.voiceMode ? (
                     <button
                       type="button"
                       className="reflection-invite"
@@ -1950,10 +2008,24 @@ export default function JournalHome() {
                       </button>
                     ) : null}
                     <button
+                      type="button"
+                      className={`btn-ghost btn-icon-only voice-compose-mic${voiceCompose.voiceMode ? ' is-active' : ''}`}
+                      onClick={() => void voiceCompose.toggleVoiceMode()}
+                      disabled={voiceCompose.isLoading || voiceCompose.voiceMode}
+                      aria-pressed={voiceCompose.voiceMode}
+                      aria-label="Start voice input"
+                      tabIndex={voiceCompose.voiceMode ? -1 : 0}
+                      aria-hidden={voiceCompose.voiceMode}
+                    >
+                      <VoiceComposeMicIcon active={false} />
+                    </button>
+                    <button
                       type="submit"
                       className="btn-primary btn-icon-only"
-                      disabled={!canDrop}
+                      disabled={!canDrop || voiceCompose.voiceMode}
                       aria-label="Save thought"
+                      tabIndex={voiceCompose.voiceMode ? -1 : 0}
+                      aria-hidden={voiceCompose.voiceMode}
                     >
                       <svg className="btn-icon" viewBox="0 0 16 16" aria-hidden="true">
                         <path

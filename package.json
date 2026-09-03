@@ -10,10 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "firebase": "^12.16.0",
+    "onnxruntime-web": "^1.26.0-dev.20260416-b7804b056c",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.18.1"
+    "react-router-dom": "^7.18.1",
+    "vosk-browser": "^0.0.8"
   },
   "devDependencies": {
     "@types/node": "^24.13.2",

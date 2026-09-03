@@ -54,11 +54,23 @@ export default defineConfig({
       workbox: {
         navigateFallback: 'index.html',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: [
+          '**/vosk-*.js',
+          '**/transformers.web-*.js',
+          '**/ort-wasm-*.wasm',
+          '**/VoiceLab-*.js',
+        ],
       },
     }),
     spaFallback404(),
   ],
   base: '/',
+  optimizeDeps: {
+    exclude: ['@huggingface/transformers'],
+  },
+  worker: {
+    format: 'es',
+  },
   server: {
     port: 5174,
     strictPort: true,

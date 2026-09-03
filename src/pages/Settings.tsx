@@ -844,6 +844,8 @@ export default function Settings() {
             <a href="https://journal42.cloud/contact" rel="noreferrer">
               Contact
             </a>
+            <span aria-hidden="true">·</span>
+            <Link to="/voice-lab">Voice input lab</Link>
           </p>
         </div>
       </main>
