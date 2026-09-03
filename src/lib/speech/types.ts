@@ -38,7 +38,7 @@ export type SpeechEngineController = SpeechEngineSnapshot & {
   /** Returns true when the model is ready to start listening. */
   loadModel: () => Promise<boolean>
   isModelReady: () => boolean
-  start: () => Promise<void>
+  start: () => Promise<boolean | void> | void
   stop: () => void | Promise<void>
   clear: () => void
   getTranscript: () => string

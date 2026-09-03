@@ -178,15 +178,6 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
       const { createModel } = await import('vosk-browser')
       const model = await createModel(voskModelUrl(activeSettings.vosk.modelTier))
 
-      if (activeSettings.vosk.punctuation) {
-        setSnapshot((current) => ({
-          ...current,
-          status: 'loading',
-          statusDetail: 'Downloading punctuation model…',
-        }))
-        await preloadPunctuationModel()
-      }
-
       modelRef.current = model
       loadedKeyRef.current = nextKey
       setRequiresReload(false)
@@ -195,8 +186,17 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
         ...current,
         status: 'ready',
         loadMs,
-        statusDetail: `Loaded ${activeSettings.vosk.modelTier}${activeSettings.vosk.punctuation ? ' + punctuation' : ''} in ${(loadMs / 1000).toFixed(1)}s.`,
+        statusDetail: `Loaded ${activeSettings.vosk.modelTier} in ${(loadMs / 1000).toFixed(1)}s.`,
       }))
+
+      // Punctuation is optional polish (~67MB). Never block listening on it —
+      // cold prod loads often stall here while local already has it cached.
+      if (activeSettings.vosk.punctuation) {
+        void preloadPunctuationModel().catch(() => {
+          /* restorePunctuation falls back to basicPunctuation */
+        })
+      }
+
       return true
     } catch (error) {
       const tier = activeSettings.vosk.modelTier
@@ -228,10 +228,10 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
         error: 'Load the model first.',
         statusDetail: 'Load the model before recording.',
       }))
-      return
+      return false
     }
 
-    stop()
+    void Promise.resolve(stop())
 
     const activeSettings = settingsRef.current
     let mic: Awaited<ReturnType<typeof openMicrophone>>
@@ -244,7 +244,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
         error: 'Microphone permission denied.',
         statusDetail: 'Could not access microphone.',
       }))
-      return
+      return false
     }
 
     const recognizer = new model.KaldiRecognizer(VOSK_SAMPLE_RATE)
@@ -340,6 +340,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
       error: null,
       statusDetail: 'Listening. Partial text updates continuously.',
     }))
+    return true
   }, [appendFinalPhrase, stop])
 
   useEffect(() => () => {

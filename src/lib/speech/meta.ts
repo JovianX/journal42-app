@@ -20,6 +20,6 @@ export const SPEECH_ENGINE_META: SpeechEngineMeta[] = [
     title: 'Vosk (local streaming)',
     subtitle: 'Lightweight Kaldi model with continuous partial results.',
     privacy: 'local',
-    modelNote: 'First load downloads ~40 MB. Partial text while speaking; optional punctuation pass.',
+    modelNote: 'First load downloads ~40 MB. Partial text while speaking; optional punctuation in Voice Lab.',
   },
 ]

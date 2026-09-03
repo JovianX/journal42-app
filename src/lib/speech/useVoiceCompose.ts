@@ -76,10 +76,16 @@ export function useVoiceCompose(
     const needsLoad = !engine.isModelReady() || engine.requiresReload
     if (needsLoad) {
       const ready = await engine.loadModel()
-      if (!ready) return
+      if (!ready) {
+        setVoiceMode(false)
+        return
+      }
     }
 
-    await engine.start()
+    const started = await engine.start()
+    if (started === false) {
+      setVoiceMode(false)
+    }
   }, [engine])
 
   const toggleVoiceMode = useCallback(async () => {
