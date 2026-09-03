@@ -7,7 +7,14 @@ import { JournalLockProvider } from './auth/JournalLockProvider.tsx'
 import './index.css'
 import App from './App.tsx'
 
-registerSW({ immediate: true })
+// Always refresh when a new SW is ready.
+// Without this, some users can get a stale/broken JS bundle until they clear cache.
+registerSW({
+  immediate: true,
+  onNeedRefresh: () => {
+    window.location.reload()
+  },
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
