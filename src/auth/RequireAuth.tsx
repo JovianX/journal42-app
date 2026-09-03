@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import AuthLoading from './AuthLoading'
 import { useAuth } from './useAuth'
 import { useDeferredLoading } from './useDeferredLoading'
+import VoiceModelWarmup from '../components/VoiceModelWarmup'
 
 function holdLoaderForDemo() {
   return (
@@ -29,5 +30,10 @@ export default function RequireAuth() {
     return <Navigate to={`/login${location.search}`} replace />
   }
 
-  return <Outlet />
+  return (
+    <>
+      <VoiceModelWarmup />
+      <Outlet />
+    </>
+  )
 }

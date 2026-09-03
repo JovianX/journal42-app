@@ -19,12 +19,9 @@ export function shouldWarmVoiceModels() {
   return true
 }
 
-export function scheduleIdleWork(work: () => void, timeoutMs = 2500) {
-  const idle = window.requestIdleCallback?.bind(window)
-  if (idle) {
-    const id = idle(work, { timeout: timeoutMs })
-    return () => window.cancelIdleCallback?.(id)
-  }
-  const timer = window.setTimeout(work, Math.min(1200, timeoutMs))
+export function scheduleIdleWork(work: () => void, delayMs = 800) {
+  // Prefer a short timer over requestIdleCallback so large model warms
+  // actually start even while the main thread stays busy (lock UI, PWA).
+  const timer = window.setTimeout(work, delayMs)
   return () => window.clearTimeout(timer)
 }

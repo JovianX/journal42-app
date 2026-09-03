@@ -5,8 +5,6 @@ import {
   syncRevealedVoiceWords,
   type RevealedVoiceWord,
 } from './voiceTranscriptWords'
-import { scheduleIdleWork, shouldWarmVoiceModels } from './warmVoiceModels'
-
 const RECENT_WORD_COUNT = 4
 
 export function useVoiceCompose(
@@ -15,15 +13,11 @@ export function useVoiceCompose(
     value: string
     onChange: (value: string) => void
     focusInput?: () => void
-    /** Warm Vosk (+ punctuation) in the background after mount. Default true. */
-    warmModels?: boolean
   },
 ) {
-  const { value, onChange, focusInput, warmModels = true } = options
+  const { value, onChange, focusInput } = options
   const valueRef = useRef(value)
   valueRef.current = value
-  const engineRef = useRef(engine)
-  engineRef.current = engine
   const wordIdRef = useRef(0)
   const [voiceMode, setVoiceMode] = useState(false)
   const [revealedWords, setRevealedWords] = useState<RevealedVoiceWord[]>([])
@@ -34,17 +28,6 @@ export function useVoiceCompose(
   const hearingVoice = isListening && engine.hearingVoice
   const level = Math.max(0, Math.min(1, engine.inputLevel))
   const recentWords = revealedWords.slice(-RECENT_WORD_COUNT)
-
-  useEffect(() => {
-    if (!warmModels || !shouldWarmVoiceModels()) return
-
-    return scheduleIdleWork(() => {
-      if (engineRef.current.isModelReady() && !engineRef.current.requiresReload) {
-        return
-      }
-      void engineRef.current.loadModel()
-    })
-  }, [warmModels])
 
   useEffect(() => {
     if (!voiceMode) {

@@ -6,13 +6,19 @@ import {
   restorePunctuation,
 } from './restorePunctuation'
 import {
-  voskModelUrl,
   voskSettingsKey,
   type SpeechLabSettings,
 } from './settings'
 import type { KaldiRecognizer, Model } from 'vosk-browser'
 import { mergeVoiceTranscript } from './voiceTranscriptWords'
 import type { SpeechEngineController, SpeechEngineSnapshot } from './types'
+import {
+  ensureVoskModel,
+  getCachedVoskModel,
+  isVoskModelLoading,
+  releaseVoskModel,
+  subscribeVoskModelCache,
+} from './voskModelCache'
 
 const VOSK_SAMPLE_RATE = 16_000
 
@@ -34,11 +40,24 @@ const INITIAL: SpeechEngineSnapshot = {
 }
 
 export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineController {
-  const [snapshot, setSnapshot] = useState<SpeechEngineSnapshot>(INITIAL)
+  const initialCached = getCachedVoskModel(settings)
+  const [snapshot, setSnapshot] = useState<SpeechEngineSnapshot>(() =>
+    initialCached
+      ? {
+          ...INITIAL,
+          status: isVoskModelLoading(settings) ? 'loading' : 'ready',
+          statusDetail: 'Model already loaded.',
+        }
+      : isVoskModelLoading(settings)
+        ? { ...INITIAL, status: 'loading', statusDetail: 'Downloading Vosk model…' }
+        : INITIAL,
+  )
   const [requiresReload, setRequiresReload] = useState(false)
   const settingsRef = useRef(settings)
-  const modelRef = useRef<Model | null>(null)
-  const loadedKeyRef = useRef<string | null>(null)
+  const modelRef = useRef<Model | null>(initialCached)
+  const loadedKeyRef = useRef<string | null>(
+    initialCached ? voskSettingsKey(settings) : null,
+  )
   const recognizerRef = useRef<KaldiRecognizer | null>(null)
   const processorRef = useRef<ScriptProcessorNode | null>(null)
   const micRef = useRef<Awaited<ReturnType<typeof openMicrophone>> | null>(null)
@@ -51,8 +70,45 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
   const modelKey = useMemo(() => voskSettingsKey(settings), [settings])
   settingsRef.current = settings
 
+  useEffect(() => {
+    return subscribeVoskModelCache(() => {
+      const active = settingsRef.current
+      const cached = getCachedVoskModel(active)
+      const loading = isVoskModelLoading(active)
+      if (cached) {
+        modelRef.current = cached
+        loadedKeyRef.current = voskSettingsKey(active)
+        setRequiresReload(false)
+        setSnapshot((current) => {
+          if (current.status === 'listening' || current.status === 'processing') {
+            return current
+          }
+          return {
+            ...current,
+            status: 'ready',
+            error: null,
+            statusDetail: 'Model already loaded.',
+          }
+        })
+        return
+      }
+      if (loading) {
+        setSnapshot((current) => {
+          if (current.status === 'listening' || current.status === 'processing') {
+            return current
+          }
+          return {
+            ...current,
+            status: 'loading',
+            statusDetail: `Downloading Vosk ${active.vosk.modelTier} model…`,
+          }
+        })
+      }
+    })
+  }, [])
+
   const unloadModel = useCallback(() => {
-    modelRef.current?.terminate()
+    releaseVoskModel(settingsRef.current)
     modelRef.current = null
     loadedKeyRef.current = null
     setRequiresReload(false)
@@ -152,8 +208,11 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
   const loadModel = useCallback(async () => {
     const activeSettings = settingsRef.current
     const nextKey = voskSettingsKey(activeSettings)
+    const cached = getCachedVoskModel(activeSettings)
 
-    if (modelRef.current && loadedKeyRef.current === nextKey) {
+    if (cached) {
+      modelRef.current = cached
+      loadedKeyRef.current = nextKey
       setRequiresReload(false)
       setSnapshot((current) => ({
         ...current,
@@ -169,10 +228,6 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     if (loadPromiseRef.current) return loadPromiseRef.current
 
     const loadPromise = (async () => {
-      modelRef.current?.terminate()
-      modelRef.current = null
-      loadedKeyRef.current = null
-
       const started = performance.now()
       setSnapshot((current) => ({
         ...current,
@@ -182,9 +237,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
       }))
 
       try {
-        const { createModel } = await import('vosk-browser')
-        const model = await createModel(voskModelUrl(activeSettings.vosk.modelTier))
-
+        const model = await ensureVoskModel(activeSettings)
         modelRef.current = model
         loadedKeyRef.current = nextKey
         setRequiresReload(false)
@@ -231,13 +284,23 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     }
   }, [])
 
-  const isModelReady = useCallback(
-    () => Boolean(modelRef.current && loadedKeyRef.current === voskSettingsKey(settingsRef.current)),
-    [],
-  )
+  const isModelReady = useCallback(() => {
+    const active = settingsRef.current
+    const cached = getCachedVoskModel(active)
+    if (cached) {
+      modelRef.current = cached
+      loadedKeyRef.current = voskSettingsKey(active)
+      return true
+    }
+    return Boolean(
+      modelRef.current && loadedKeyRef.current === voskSettingsKey(active),
+    )
+  }, [])
 
   const start = useCallback(async () => {
-    const model = modelRef.current
+    const activeSettings = settingsRef.current
+    const model =
+      modelRef.current ?? getCachedVoskModel(activeSettings)
     if (!model) {
       setSnapshot((current) => ({
         ...current,
@@ -246,10 +309,11 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
       }))
       return false
     }
+    modelRef.current = model
+    loadedKeyRef.current = voskSettingsKey(activeSettings)
 
     void Promise.resolve(stop())
 
-    const activeSettings = settingsRef.current
     let mic: Awaited<ReturnType<typeof openMicrophone>>
     try {
       mic = await openMicrophone(activeSettings.shared)
@@ -359,12 +423,15 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     return true
   }, [appendFinalPhrase, stop])
 
-  useEffect(() => () => {
-    listeningRef.current = false
-    teardownAudio()
-    modelRef.current?.terminate()
-    modelRef.current = null
-  }, [teardownAudio])
+  useEffect(
+    () => () => {
+      listeningRef.current = false
+      teardownAudio()
+      // Shared cache owns Model lifetime across routes / unlock.
+      modelRef.current = null
+    },
+    [teardownAudio],
+  )
 
   return {
     ...snapshot,
