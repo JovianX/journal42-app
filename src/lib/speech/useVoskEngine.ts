@@ -312,8 +312,7 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     modelRef.current = model
     loadedKeyRef.current = voskSettingsKey(activeSettings)
 
-    console.log('[vosk] start() called, model:', !!model)
-    void Promise.resolve(stop())
+    await stop()
 
     let mic: Awaited<ReturnType<typeof openMicrophone>>
     try {
@@ -333,22 +332,14 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
       recognizer.setWords(true)
     }
 
-    // Ensure AudioContext is running (iOS requires resume inside user gesture)
     if (mic.audioContext.state !== 'running') {
-      console.log('[vosk] AudioContext state:', mic.audioContext.state, '— resuming')
       await mic.audioContext.resume()
     }
 
     const source = mic.audioContext.createMediaStreamSource(mic.stream)
-
-    // Check that the mic track is actually live
-    const track = mic.stream.getAudioTracks()[0]
-    console.log('[vosk] mic track:', track?.label, 'enabled:', track?.enabled, 'readyState:', track?.readyState, 'muted:', track?.muted)
-
     const processor = mic.audioContext.createScriptProcessor(4096, 1, 1)
 
     recognizer.on('result', (message) => {
-      console.log('[vosk] result event:', message.event, (message as any).result)
       if (message.event !== 'result') return
       const text = message.result.text?.trim()
       if (!text) return
@@ -365,7 +356,6 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     recognizer.on('partialresult', (message) => {
       if (message.event !== 'partialresult') return
       const partial = message.result.partial?.trim() ?? ''
-      if (partial) console.log('[vosk] partial:', partial)
       interimRef.current = partial
 
       setSnapshot((current) => ({
@@ -381,27 +371,10 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
     let levelFrame = 0
     let hearingVoice = false
     let smoothedLevel = 0
-    // Diagnostic: use AnalyserNode to verify source has real audio
-    const analyser = mic.audioContext.createAnalyser()
-    analyser.fftSize = 2048
-    source.connect(analyser)
-    setTimeout(() => {
-      const buf = new Float32Array(analyser.fftSize)
-      analyser.getFloatTimeDomainData(buf)
-      const aRms = computeRms(buf)
-      console.log('[vosk] analyser RMS after 500ms:', aRms.toFixed(6))
-    }, 500)
-
-    let audioFrameCount = 0
     processor.onaudioprocess = (event) => {
       if (!listeningRef.current) return
       try {
         const input = event.inputBuffer.getChannelData(0)
-        audioFrameCount += 1
-        if (audioFrameCount <= 3) {
-          const rms = computeRms(input)
-          console.log(`[vosk] audio frame #${audioFrameCount}, rms=${rms.toFixed(6)}, samples=${input.length}, sampleRate=${mic.sampleRate}`)
-        }
         levelFrame += 1
         if (levelFrame % 3 === 0) {
           const rms = computeRms(input)
@@ -439,7 +412,6 @@ export function useVoskEngine(settings: SpeechLabSettings): SpeechEngineControll
 
     source.connect(processor)
     processor.connect(mic.audioContext.destination)
-    console.log('[vosk] audio pipeline connected, audioContext.state:', mic.audioContext.state)
 
     micRef.current = mic
     processorRef.current = processor

@@ -123,16 +123,6 @@ export function saveSpeechLabSettings(settings: SpeechLabSettings) {
   notifySpeechLabSettingsChanged()
 }
 
-export function patchSpeechLabSharedSettings(
-  patch: Partial<SpeechLabSettings['shared']>,
-) {
-  const current = loadSpeechLabSettings()
-  saveSpeechLabSettings({
-    ...current,
-    shared: { ...current.shared, ...patch },
-  })
-}
-
 export function whisperModelId(size: WhisperModelSize) {
   return `onnx-community/whisper-${size}.en`
 }
