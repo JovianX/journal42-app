@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
+import { useAppInstall } from '../lib/useAppInstall'
 import { userFirstName, userInitials, userLabel } from '../lib/userDisplay'
 
 type AccountMenuProps = {
@@ -22,6 +23,7 @@ export default function AccountMenu({
   onLockJournal,
   showLockJournal = false,
 }: AccountMenuProps) {
+  const install = useAppInstall()
   const [open, setOpen] = useState(false)
   const [photoFailed, setPhotoFailed] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -133,6 +135,25 @@ export default function AccountMenu({
           >
             Settings
           </Link>
+          {install.kind === 'prompt' ? (
+            <button
+              type="button"
+              className="account-menu-item"
+              role="menuitem"
+              disabled={install.busy}
+              onClick={() => {
+                setOpen(false)
+                void install.install()
+              }}
+            >
+              {install.busy ? 'Installing…' : 'Install'}
+            </button>
+          ) : install.kind === 'ios-hint' ? (
+            <div className="account-menu-item is-stack" role="menuitem">
+              <span>Install</span>
+              <span className="account-menu-item-hint">Share → Add to Home Screen</span>
+            </div>
+          ) : null}
           {showLockJournal && onLockJournal ? (
             <button
               type="button"

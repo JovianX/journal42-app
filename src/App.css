@@ -338,6 +338,20 @@ a.account-menu-item {
   outline: none;
 }
 
+.account-menu-item.is-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+}
+
+.account-menu-item-hint {
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
 .profile-avatar-link {
   text-decoration: none;
 }
