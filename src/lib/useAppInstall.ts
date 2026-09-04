@@ -5,6 +5,39 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
 }
 
+type InstallListener = () => void
+
+let deferredPrompt: BeforeInstallPromptEvent | null = null
+const listeners = new Set<InstallListener>()
+
+function notifyInstallListeners() {
+  for (const listener of listeners) listener()
+}
+
+function onBeforeInstall(event: Event) {
+  event.preventDefault()
+  deferredPrompt = event as BeforeInstallPromptEvent
+  notifyInstallListeners()
+}
+
+function onAppInstalled() {
+  deferredPrompt = null
+  notifyInstallListeners()
+}
+
+let captured = false
+
+export function captureAppInstallEvents() {
+  if (typeof window === 'undefined' || captured) return
+  captured = true
+  window.addEventListener('beforeinstallprompt', onBeforeInstall)
+  window.addEventListener('appinstalled', onAppInstalled)
+}
+
+if (typeof window !== 'undefined') {
+  captureAppInstallEvents()
+}
+
 function isStandaloneDisplay() {
   if (typeof window === 'undefined') return false
   if (window.matchMedia('(display-mode: standalone)').matches) return true
@@ -29,18 +62,14 @@ export type AppInstallState =
 
 export function useAppInstall(): AppInstallState {
   const [installed, setInstalled] = useState(isStandaloneDisplay)
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null)
+  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(
+    () => deferredPrompt,
+  )
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    function onBeforeInstall(event: Event) {
-      event.preventDefault()
-      setDeferred(event as BeforeInstallPromptEvent)
-    }
-
-    function onInstalled() {
-      setDeferred(null)
-      setInstalled(true)
+    function syncDeferred() {
+      setDeferred(deferredPrompt)
     }
 
     function onDisplayModeChange(event: MediaQueryListEvent) {
@@ -49,15 +78,13 @@ export function useAppInstall(): AppInstallState {
 
     const media = window.matchMedia('(display-mode: standalone)')
     media.addEventListener('change', onDisplayModeChange)
-    window.addEventListener('beforeinstallprompt', onBeforeInstall)
-    window.addEventListener('appinstalled', onInstalled)
-
+    listeners.add(syncDeferred)
     setInstalled(isStandaloneDisplay())
+    syncDeferred()
 
     return () => {
       media.removeEventListener('change', onDisplayModeChange)
-      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
-      window.removeEventListener('appinstalled', onInstalled)
+      listeners.delete(syncDeferred)
     }
   }, [])
 
@@ -75,7 +102,9 @@ export function useAppInstall(): AppInstallState {
         try {
           await deferred.prompt()
           await deferred.userChoice
+          deferredPrompt = null
           setDeferred(null)
+          notifyInstallListeners()
         } finally {
           setBusy(false)
         }
