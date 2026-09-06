@@ -4,7 +4,7 @@
       "emailPassword": true,
       "googleSignIn": {
         "oAuthBrandDisplayName": "Journal42",
-        "supportEmail": "arthur@jovianx.com"
+        "supportEmail": "hello@journal42.cloud"
       }
     }
   },
