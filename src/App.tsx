@@ -4,6 +4,7 @@ import RequireAuth from './auth/RequireAuth.tsx'
 import RequireJournalUnlock from './auth/RequireJournalUnlock.tsx'
 import RedirectIfSignedIn from './auth/RedirectIfSignedIn.tsx'
 import AuthLoading from './auth/AuthLoading.tsx'
+import { useVisualViewport } from './lib/useVisualViewport.ts'
 import JournalHome from './pages/JournalHome.tsx'
 import Login from './pages/Login.tsx'
 import Settings from './pages/Settings.tsx'
@@ -12,6 +13,8 @@ import './App.css'
 const VoiceLab = lazy(() => import('./pages/VoiceLab.tsx'))
 
 export default function App() {
+  useVisualViewport()
+
   return (
     <Routes>
       <Route element={<RequireAuth />}>

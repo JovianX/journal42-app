@@ -578,7 +578,7 @@ function NuggetItem({
   const [voiceLoading, setVoiceLoading] = useState(false)
   const [voiceError, setVoiceError] = useState<string | null>(null)
   const [voiceRetryReply, setVoiceRetryReply] = useState<string | null>(null)
-  const itemRef = useRef<HTMLLIElement>(null)
+  const itemRef = useRef<HTMLElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const editRef = useRef<HTMLTextAreaElement>(null)
   const voiceReplyRef = useRef<HTMLTextAreaElement>(null)
@@ -637,14 +637,6 @@ function NuggetItem({
     }, VOICE_PANEL_MS)
     return () => window.clearTimeout(timer)
   }, [discussion, voiceLoading, voiceError])
-
-  useEffect(() => {
-    if (!isFresh) return
-    const frame = window.requestAnimationFrame(() => {
-      itemRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [isFresh])
 
   useEffect(() => {
     if (!isEditing) return
@@ -920,7 +912,7 @@ function NuggetItem({
   }
 
   return (
-    <li
+    <article
       ref={itemRef}
       className={`thought-saved${isFresh ? ' is-fresh' : ''}${menuOpen ? ' is-menu-open' : ''}${voicePanelOpen ? ' has-voice' : ''}${hasStoredReflection ? ' has-reflection' : ''}${isEditing ? ' is-editing' : ''}`}
     >
@@ -1096,7 +1088,7 @@ function NuggetItem({
           offer={nuggetOffer}
         />
       </div>
-    </li>
+    </article>
   )
 }
 
@@ -1488,6 +1480,10 @@ export default function JournalHome() {
     voiceFetchAbortRef.current = null
     setReflectionInvite(true)
   }, [draft, user])
+
+  useLayoutEffect(() => {
+    inputRef.current?.focus({ preventScroll: true })
+  }, [])
 
   useLayoutEffect(() => {
     if (voiceCompose.voiceMode) return
@@ -1919,7 +1915,6 @@ export default function JournalHome() {
                       onKeyDown={onComposerKeyDown}
                       placeholder="What's rattling around up there?"
                       rows={1}
-                      autoFocus
                     />
                   )}
                 </div>
