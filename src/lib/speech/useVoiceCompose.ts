@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  holdScreenWakeLock,
+  releaseScreenWakeLock,
+} from '../screenWakeLock'
 import type { SpeechEngineController } from './types'
 import {
   speechWordsFromTranscript,
@@ -47,6 +51,7 @@ export function useVoiceCompose(
 
   const exitVoiceMode = useCallback(
     async (appendTranscript: boolean) => {
+      releaseScreenWakeLock()
       await engine.stop()
       if (appendTranscript) {
         const spoken = engine.getTranscript()
@@ -68,6 +73,7 @@ export function useVoiceCompose(
 
   const enterVoiceMode = useCallback(async () => {
     setVoiceMode(true)
+    holdScreenWakeLock()
     setRevealedWords([])
     wordIdRef.current = 0
     engine.clear()
@@ -76,6 +82,7 @@ export function useVoiceCompose(
     if (needsLoad) {
       const ready = await engine.loadModel()
       if (!ready) {
+        releaseScreenWakeLock()
         setVoiceMode(false)
         return
       }
@@ -83,6 +90,7 @@ export function useVoiceCompose(
 
     const started = await engine.start()
     if (started === false) {
+      releaseScreenWakeLock()
       setVoiceMode(false)
     }
   }, [engine])
@@ -94,6 +102,12 @@ export function useVoiceCompose(
     }
     await enterVoiceMode()
   }, [enterVoiceMode, exitVoiceMode, voiceMode])
+
+  useEffect(() => {
+    if (!voiceMode) return
+    holdScreenWakeLock()
+    return () => releaseScreenWakeLock()
+  }, [voiceMode])
 
   useEffect(() => {
     if (!voiceMode) return
