@@ -12,6 +12,14 @@ function holdLoaderForDemo() {
   )
 }
 
+function safeNextPath(value: string | null) {
+  if (!value) return null
+  if (!value.startsWith('/')) return null
+  if (value.startsWith('//')) return null
+  if (value.startsWith('/login') || value.startsWith('/signup')) return null
+  return value
+}
+
 export default function RedirectIfSignedIn() {
   const { user, loading } = useAuth()
   const location = useLocation()
@@ -28,12 +36,16 @@ export default function RedirectIfSignedIn() {
 
   if (user) {
     const params = new URLSearchParams(location.search)
+    const next = safeNextPath(params.get('next'))
+    if (next) {
+      return <Navigate to={next} replace />
+    }
     const plan = params.get('plan')
     const draft = params.get('draft')
-    const next = new URLSearchParams()
-    if (isPaidPlan(plan)) next.set('plan', plan)
-    if (draft?.trim()) next.set('draft', draft.trim())
-    const query = next.toString()
+    const nextParams = new URLSearchParams()
+    if (isPaidPlan(plan)) nextParams.set('plan', plan)
+    if (draft?.trim()) nextParams.set('draft', draft.trim())
+    const query = nextParams.toString()
     return <Navigate to={query ? `/?${query}` : '/'} replace />
   }
 

@@ -27,7 +27,16 @@ export default function RequireAuth() {
   }
 
   if (!user) {
-    return <Navigate to={`/login${location.search}`} replace />
+    const params = new URLSearchParams(location.search)
+    if (
+      location.pathname !== '/' &&
+      location.pathname !== '/login' &&
+      location.pathname !== '/signup'
+    ) {
+      params.set('next', location.pathname)
+    }
+    const query = params.toString()
+    return <Navigate to={query ? `/login?${query}` : '/login'} replace />
   }
 
   return (

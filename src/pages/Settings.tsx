@@ -16,6 +16,7 @@ import {
 import { quotaLine, useAiUsage } from '../lib/aiUsage'
 import { deleteAccount } from '../lib/accountApi'
 import { openBillingPortal, startCheckout } from '../lib/billingApi'
+import { getPartnerMe, type PartnerStatus } from '../lib/partnerApi'
 import { useAppInstall } from '../lib/useAppInstall'
 import { userFirstName, userInitials } from '../lib/userDisplay'
 import SettingsMicrophoneSelect from '../components/SettingsMicrophoneSelect'
@@ -71,6 +72,8 @@ export default function Settings() {
   const [confirmNextPasscode, setConfirmNextPasscode] = useState('')
   const [removePasscode, setRemovePasscode] = useState('')
   const [speechSettings, setSpeechSettings] = useSpeechLabSettings()
+  const [partnerStatus, setPartnerStatus] = useState<PartnerStatus | null>(null)
+  const [partnerAdmin, setPartnerAdmin] = useState(false)
 
   useEffect(() => {
     document.title = 'Journal42 · Account'
@@ -82,6 +85,25 @@ export default function Settings() {
   useEffect(() => {
     setPhotoFailed(false)
   }, [user?.photoURL])
+
+  useEffect(() => {
+    if (!user) return
+    let active = true
+    getPartnerMe(user)
+      .then((me) => {
+        if (!active) return
+        setPartnerStatus(me.status)
+        setPartnerAdmin(Boolean(me.isAdmin))
+      })
+      .catch(() => {
+        if (!active) return
+        setPartnerStatus('none')
+        setPartnerAdmin(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [user])
 
   if (!user || !billingReady) {
     return <AuthLoading />
@@ -436,6 +458,33 @@ export default function Settings() {
             </section>
 
             <nav className="settings-actions" aria-label="Account actions">
+              <div className="settings-action">
+                <div className="settings-action-row">
+                  <div className="settings-action-copy">
+                    <p className="settings-action-label">Partners</p>
+                    <p className="settings-action-hint">
+                      {partnerStatus === 'pending'
+                        ? 'Application in review'
+                        : partnerStatus === 'approved'
+                          ? 'Links, clicks, signups, and purchases'
+                          : partnerStatus === 'rejected'
+                            ? 'Not approved'
+                            : 'Share Journal42 and earn'}
+                    </p>
+                  </div>
+                  <div className="settings-action-links">
+                    <Link className="settings-inline-link" to="/partner">
+                      Open
+                    </Link>
+                    {partnerAdmin ? (
+                      <Link className="settings-inline-link" to="/partner/review">
+                        Review
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
               <div className="settings-action">
                 <div className="settings-action-row">
                   <div className="settings-action-copy">

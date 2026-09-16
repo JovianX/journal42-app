@@ -44,6 +44,12 @@ service cloud.firestore {
     //   - chats: number (free chat replies used today)
     //   - updatedAt: number
     //
+    // Field: users/{uid}.referredBy (Admin SDK only)
+    //   - code, partnerUid, capturedAt
+    //
+    // Collection: partners/{uid} (Admin SDK write; owner read)
+    // Collection: partnerCodes/{code} (Admin SDK only)
+    //
     // ===============================================================
 
     function isAuthenticated() {
@@ -61,10 +67,10 @@ service cloud.firestore {
     }
 
     function isValidUserDoc(data) {
-      return data.keys().hasOnly(['draft', 'updatedAt', 'discussion', 'historyTastes', 'journalLockSalt', 'journalLockVerifier'])
-        && data.draft is string
-        && data.draft.size() <= 100000
+      return data.keys().hasOnly(['draft', 'updatedAt', 'discussion', 'historyTastes', 'journalLockSalt', 'journalLockVerifier', 'referredBy'])
         && data.updatedAt is number
+        && (!('draft' in data)
+          || (data.draft is string && data.draft.size() <= 100000))
         && (!('discussion' in data) || isValidDiscussion(data.discussion))
         && (!('historyTastes' in data)
           || (data.historyTastes is int
@@ -73,7 +79,13 @@ service cloud.firestore {
         && (!('journalLockSalt' in data)
           || (data.journalLockSalt is string && data.journalLockSalt.size() <= 256))
         && (!('journalLockVerifier' in data)
-          || (data.journalLockVerifier is string && data.journalLockVerifier.size() <= 512));
+          || (data.journalLockVerifier is string && data.journalLockVerifier.size() <= 512))
+        && (!('referredBy' in data) || data.referredBy is map);
+    }
+
+    function referredByUnchanged() {
+      return (!('referredBy' in request.resource.data) && !('referredBy' in resource.data))
+        || request.resource.data.referredBy == resource.data.referredBy;
     }
 
     function isValidNugget(data) {
@@ -87,8 +99,14 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if isOwner(uid);
-      allow create: if isOwner(uid) && isValidUserDoc(request.resource.data);
-      allow update: if isOwner(uid) && isValidUserDoc(request.resource.data);
+      // Clients must not set referredBy; Admin SDK bind may create the doc first.
+      allow create: if isOwner(uid)
+        && isValidUserDoc(request.resource.data)
+        && request.resource.data.draft is string
+        && !('referredBy' in request.resource.data);
+      allow update: if isOwner(uid)
+        && isValidUserDoc(request.resource.data)
+        && referredByUnchanged();
       allow delete: if isOwner(uid);
 
       match /nuggets/{nuggetId} {
@@ -111,6 +129,19 @@ service cloud.firestore {
         allow read: if isOwner(uid);
         allow write: if false;
       }
+    }
+
+    match /partners/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false;
+
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    match /partnerCodes/{code} {
+      allow read, write: if false;
     }
   }
 }

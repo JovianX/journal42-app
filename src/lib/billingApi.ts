@@ -1,6 +1,7 @@
 import type { User } from 'firebase/auth'
 import { getAiApiBase } from './ai'
 import type { PaidPlanId } from './billing'
+import { readPartnerCode } from './partnerCode'
 
 type BillingUrlResponse = {
   url?: string
@@ -42,7 +43,10 @@ async function postBilling(
 }
 
 export async function startCheckout(user: User, plan: PaidPlanId) {
-  const url = await postBilling('/billing/checkout', user, { plan })
+  const url = await postBilling('/billing/checkout', user, {
+    plan,
+    a: readPartnerCode() || undefined,
+  })
   window.location.assign(url)
 }
 
