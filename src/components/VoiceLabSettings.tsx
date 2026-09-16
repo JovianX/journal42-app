@@ -41,12 +41,14 @@ function SelectRow<T extends string | number>({
   value,
   options,
   onChange,
+  onActivate,
 }: {
   label: string
   description?: string
   value: T
   options: Array<{ value: T; label: string }>
   onChange: (value: T) => void
+  onActivate?: () => void
 }) {
   return (
     <label className="voice-lab-setting-select">
@@ -60,6 +62,8 @@ function SelectRow<T extends string | number>({
         className="voice-lab-setting-control"
         value={String(value)}
         onChange={(event) => onChange(event.target.value as T)}
+        onPointerDown={onActivate}
+        onFocus={onActivate}
       >
         {options.map((option) => (
           <option key={String(option.value)} value={String(option.value)}>
@@ -75,7 +79,7 @@ export default function VoiceLabSettingsPanel({
   settings,
   onChange,
 }: VoiceLabSettingsProps) {
-  const audioDevices = useAudioDevices()
+  const { devices: audioDevices, requestAccess } = useAudioDevices()
 
   function patchShared(patch: Partial<SpeechLabSettings['shared']>) {
     onChange({ ...settings, shared: { ...settings.shared, ...patch } })
@@ -101,21 +105,26 @@ export default function VoiceLabSettingsPanel({
       <div className="voice-lab-settings-grid">
         <div className="voice-lab-settings-group">
           <h3 className="voice-lab-settings-group-title">Shared microphone</h3>
-          {audioDevices.length > 0 && (
-            <SelectRow
-              label="Input device"
-              description="Choose which microphone to use."
-              value={settings.shared.deviceId}
-              options={[
-                { value: '', label: 'System default' },
-                ...audioDevices.map((d) => ({
-                  value: d.deviceId,
-                  label: d.label,
-                })),
-              ]}
-              onChange={(value) => patchShared({ deviceId: value })}
-            />
-          )}
+          <SelectRow
+            label="Input device"
+            description="Choose which microphone to use."
+            value={settings.shared.deviceId}
+            options={[
+              { value: '', label: 'System default' },
+              ...(settings.shared.deviceId &&
+              !audioDevices.some((device) => device.deviceId === settings.shared.deviceId)
+                ? [{ value: settings.shared.deviceId, label: 'Saved microphone' }]
+                : []),
+              ...audioDevices.map((d) => ({
+                value: d.deviceId,
+                label: d.label,
+              })),
+            ]}
+            onChange={(value) => patchShared({ deviceId: value })}
+            onActivate={() => {
+              void requestAccess()
+            }}
+          />
           <ToggleRow
             label="Echo cancellation"
             checked={settings.shared.echoCancellation}
